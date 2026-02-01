@@ -351,9 +351,12 @@ app.get('/api/domains', async (req, res) => {
 // Run a scan for a specific domain
 app.post('/api/run', async (req, res) => {
   try {
-    const { domainId } = req.body;
+    const { domainId, daysBack = 30 } = req.body;
     const db = await getDatabase();
     const scout = getAgent('scout');
+
+    // Validate daysBack (min 7, max 365)
+    const days = Math.max(7, Math.min(365, parseInt(daysBack) || 30));
 
     let results = [];
     let domainName = '';
@@ -362,7 +365,7 @@ app.post('/api/run', async (req, res) => {
       // Scan all domains
       const domains = db.getActiveDomains();
       for (const domain of domains) {
-        const domainResults = await scout.searchDomain(domain, 30);
+        const domainResults = await scout.searchDomain(domain, days);
         results.push(...domainResults);
       }
       domainName = 'All Domains';
@@ -372,7 +375,7 @@ app.post('/api/run', async (req, res) => {
       if (!domain) {
         return res.status(404).json({ error: 'Domain not found' });
       }
-      results = await scout.searchDomain(domain, 30);
+      results = await scout.searchDomain(domain, days);
       domainName = domain.name;
     }
 

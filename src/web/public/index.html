@@ -304,6 +304,21 @@
         <h3 style="font-size:20px;margin-bottom:20px;text-align:center">🚀 Run Research Scan</h3>
         <p style="text-align:center;margin-bottom:20px;color:#94a3b8">Select a domain and click Run to search for papers from the last 30 days</p>
 
+        <div style="margin-bottom:20px;">
+          <label style="display:block;margin-bottom:8px;color:#94a3b8;font-size:14px;">📅 Search period (days back)</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input type="range" id="days-back-slider" min="7" max="180" value="30" 
+              style="flex:1;accent-color:#38bdf8;" oninput="updateDaysLabel()">
+            <span id="days-back-label" style="min-width:80px;text-align:center;font-weight:bold;color:#38bdf8;">30 days</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:4px;">
+            <span>1 week</span>
+            <span>1 month</span>
+            <span>3 months</span>
+            <span>6 months</span>
+          </div>
+        </div>
+
         <div id="domain-buttons" style="display:grid;gap:10px;margin-bottom:20px;">
           <div class="loading">Loading domains...</div>
         </div>
@@ -1115,6 +1130,11 @@
     // Load domains for Run panel
     let selectedDomain = null;
 
+    function updateDaysLabel() {
+      const days = document.getElementById('days-back-slider').value;
+      document.getElementById('days-back-label').textContent = days + ' days';
+    }
+
     async function loadDomains() {
       try {
         const domains = await authFetch('/api/domains').then(r => r.json());
@@ -1191,6 +1211,8 @@
         return;
       }
 
+      const daysBack = parseInt(document.getElementById('days-back-slider').value) || 30;
+
       const statusEl = document.getElementById('run-status');
       const statusText = document.getElementById('run-status-text');
       const progressBar = document.getElementById('run-progress-bar');
@@ -1199,8 +1221,8 @@
       // Show status
       statusEl.style.display = 'block';
       statusText.innerHTML = domain === 'all'
-        ? '🔄 Running all domains...'
-        : '🔎 Searching <strong>' + domain + '</strong>...';
+        ? `🔄 Running all domains (last ${daysBack} days)...`
+        : `🔎 Searching <strong>${domain}</strong> (last ${daysBack} days)...`;
       progressBar.style.width = '10%';
       resultsEl.innerHTML = '';
 
@@ -1219,7 +1241,7 @@
       try {
         const response = await authFetch('/api/run', {
           method: 'POST',
-          body: { domainId: domain }
+          body: { domainId: domain, daysBack }
         });
 
         clearInterval(progressInterval);
