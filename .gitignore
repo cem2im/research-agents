@@ -5,3 +5,4 @@ logs/
 *.log
 .DS_Store
 data/*.db
+DEPLOYMENT_NOTES.md
