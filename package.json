@@ -1,0 +1,36 @@
+{
+  "name": "research-agents",
+  "version": "1.0.0",
+  "description": "Autonomous research agent system",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "research": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "web": "node src/web/server.js",
+    "scout": "node src/cli.js scout",
+    "pipeline": "node src/cli.js pipeline",
+    "chat": "node src/cli.js chat",
+    "report": "node src/cli.js report"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "chalk": "^5.3.0",
+    "chromadb": "^1.7.0",
+    "chromadb-default-embed": "^2.13.2",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0",
+    "express": "^5.2.1",
+    "marked": "^12.0.0",
+    "node-cron": "^3.0.3",
+    "ora": "^8.0.0",
+    "sql.js": "^1.10.0",
+    "uuid": "^9.0.0",
+    "xml2js": "^0.6.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

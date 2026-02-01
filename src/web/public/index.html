@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Agents Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid #334155;
+      margin-bottom: 30px;
+    }
+    h1 { font-size: 24px; color: #38bdf8; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .stat-card .number {
+      font-size: 36px;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+    .stat-card .label {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: #1e293b;
+      border: none;
+      border-radius: 8px;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tab.active {
+      background: #38bdf8;
+      color: #0f172a;
+    }
+    .tab:hover { background: #334155; }
+    .tab.active:hover { background: #38bdf8; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 15px;
+    }
+    .card h3 {
+      color: #f1f5f9;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    .card p {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .card .meta {
+      display: flex;
+      gap: 15px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge.high { background: #ef4444; color: white; }
+    .badge.medium { background: #f59e0b; color: black; }
+    .badge.low { background: #22c55e; color: white; }
+    .badge.pubmed { background: #3b82f6; color: white; }
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input[type="text"], textarea {
+      flex: 1;
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: none;
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #0ea5e9; }
+    button:disabled { background: #475569; cursor: not-allowed; }
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+    .schedule-day {
+      background: #1e293b;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .schedule-day.today {
+      border: 2px solid #38bdf8;
+    }
+    .schedule-day .day-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #f1f5f9;
+    }
+    .schedule-day .domain {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .memory-form {
+      display: grid;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    select {
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+    }
+    .feedback-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .feedback-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #334155;
+    }
+    .feedback-btn.useful { background: #22c55e; }
+    .feedback-btn.not-useful { background: #ef4444; }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+    }
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+    }
+    /* Login screen */
+    .login-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .login-box {
+      background: #1e293b;
+      padding: 40px;
+      border-radius: 16px;
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+    }
+    .login-box h2 {
+      color: #38bdf8;
+      margin-bottom: 10px;
+    }
+    .login-box p {
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+    .login-box input {
+      width: 100%;
+      margin-bottom: 15px;
+    }
+    .login-box .error {
+      color: #ef4444;
+      margin-bottom: 10px;
+    }
+    /* Settings */
+    .settings-section {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .settings-section h3 {
+      color: #f1f5f9;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .domain-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: #0f172a;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .domain-item .emoji { font-size: 24px; }
+    .domain-item .info { flex: 1; }
+    .domain-item .name { font-weight: bold; color: #f1f5f9; }
+    .domain-item .keywords { font-size: 12px; color: #64748b; }
+    .domain-item button { padding: 6px 12px; font-size: 12px; }
+    .tag {
+      display: inline-block;
+      background: #334155;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin: 2px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Overlay -->
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-box">
+      <h2>🔬 Research Agents</h2>
+      <p>Enter password to access the dashboard</p>
+      <div class="error" id="login-error" style="display:none;"></div>
+      <input type="password" id="login-password" placeholder="Password" onkeypress="if(event.key==='Enter')doLogin()">
+      <button onclick="doLogin()" style="width:100%;">Login</button>
+    </div>
+  </div>
+
+  <div class="container" id="main-container" style="display:none;">
+    <header>
+      <h1>🔬 Research Agents</h1>
+      <div id="schedule-today"></div>
+    </header>
+
+    <div class="stats-grid" id="stats"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="run" style="background:#22c55e;color:#0f172a">▶ Run</button>
+      <button class="tab" data-tab="discoveries">Discoveries</button>
+      <button class="tab" data-tab="hypotheses">Hypotheses</button>
+      <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="memory">Memory</button>
+      <button class="tab" data-tab="schedule">Schedule</button>
+      <button class="tab" data-tab="search">Search</button>
+      <button class="tab" data-tab="settings" style="margin-left:auto;">⚙️ Settings</button>
+      <button onclick="doLogout()" style="background:#ef4444;padding:10px 15px;font-size:12px;">Logout</button>
+    </div>
+
+    <div class="panel active" id="run-panel">
+      <div class="card" style="max-width:600px;margin:0 auto;">
+        <h3 style="font-size:20px;margin-bottom:20px;text-align:center">🚀 Run Research Scan</h3>
+        <p style="text-align:center;margin-bottom:20px;color:#94a3b8">Select a domain and click Run to search for papers from the last 30 days</p>
+
+        <div id="domain-buttons" style="display:grid;gap:10px;margin-bottom:20px;">
+          <div class="loading">Loading domains...</div>
+        </div>
+
+        <div id="run-status" style="margin-top:20px;display:none;">
+          <div style="background:#334155;border-radius:8px;padding:15px;text-align:center;">
+            <div id="run-status-text">Running...</div>
+            <div id="run-progress" style="margin-top:10px;height:4px;background:#475569;border-radius:2px;overflow:hidden;">
+              <div id="run-progress-bar" style="width:0%;height:100%;background:#22c55e;transition:width 0.3s;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="run-results" style="margin-top:20px;"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="discoveries-panel">
+      <div id="discoveries-toolbar" style="display:none;margin-bottom:15px;padding:15px;background:#1e293b;border-radius:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>
+            <span id="selected-count">0</span> papers selected
+            <button onclick="selectAllDiscoveries()" style="margin-left:10px;padding:6px 12px;font-size:12px;background:#334155;">Select All</button>
+            <button onclick="clearSelection()" style="margin-left:5px;padding:6px 12px;font-size:12px;background:#334155;">Clear</button>
+          </div>
+          <button onclick="runPipelineSelected()" id="pipeline-selected-btn" style="background:#8b5cf6;padding:10px 20px;" disabled>
+            🧠 Run Pipeline on Selected
+          </button>
+        </div>
+      </div>
+      <div style="margin-bottom:15px;">
+        <button onclick="runPipelineAll()" style="background:#8b5cf6;padding:12px 20px;width:100%;">
+          🧠 Run Full Pipeline (All Unprocessed Discoveries)
+        </button>
+      </div>
+      <div id="discoveries-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <div class="panel" id="hypotheses-panel">
+      <div id="hypotheses-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <div class="panel" id="projects-panel">
+      <div id="projects-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <div class="panel" id="memory-panel">
+      <div class="memory-form">
+        <input type="text" id="memory-title" placeholder="Title">
+        <textarea id="memory-content" rows="3" placeholder="Your insight or note..."></textarea>
+        <div class="form-row">
+          <select id="memory-category">
+            <option value="insight">Insight</option>
+            <option value="strategy">Strategy</option>
+            <option value="competitor">Competitor</option>
+            <option value="context">Context</option>
+          </select>
+          <select id="memory-importance">
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <button onclick="addMemory()">Add Memory</button>
+      </div>
+      <div id="memory-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <div class="panel" id="schedule-panel">
+      <div class="schedule-grid" id="schedule-grid"></div>
+    </div>
+
+    <div class="panel" id="search-panel">
+      <div class="search-box">
+        <input type="text" id="search-query" placeholder="Search PubMed (last 30 days)...">
+        <button onclick="doSearch()" id="search-btn">Search</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+    <div class="panel" id="settings-panel">
+      <!-- API Key Section -->
+      <div class="settings-section">
+        <h3>🔑 API Key</h3>
+        <p style="color:#94a3b8;margin-bottom:15px;">Required for AI-powered hypothesis generation. Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:#38bdf8;">console.anthropic.com</a></p>
+        <div id="apikey-status" style="margin-bottom:10px;"></div>
+        <div style="display:flex;gap:10px;">
+          <input type="password" id="apikey-input" placeholder="sk-ant-api03-..." style="flex:1;">
+          <button onclick="saveApiKey()">Save Key</button>
+        </div>
+      </div>
+
+      <!-- Domains Section -->
+      <div class="settings-section">
+        <h3>📚 Research Domains</h3>
+        <p style="color:#94a3b8;margin-bottom:15px;">Customize your research domains and keywords</p>
+
+        <div id="domains-list"></div>
+
+        <div style="margin-top:20px;padding-top:20px;border-top:1px solid #334155;">
+          <h4 style="color:#f1f5f9;margin-bottom:15px;">Add New Domain</h4>
+          <div style="display:grid;gap:10px;">
+            <div style="display:flex;gap:10px;">
+              <input type="text" id="new-domain-emoji" placeholder="🔬" style="width:60px;text-align:center;">
+              <input type="text" id="new-domain-name" placeholder="Domain Name" style="flex:1;">
+            </div>
+            <input type="text" id="new-domain-keywords" placeholder="keyword1, keyword2, keyword3 (comma separated)">
+            <button onclick="addDomain()">Add Domain</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Password Section -->
+      <div class="settings-section">
+        <h3>🔒 Access Settings</h3>
+        <p style="color:#94a3b8;">Dashboard password is configured via DASHBOARD_PASSWORD environment variable.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========== AUTH ==========
+    let sessionToken = localStorage.getItem('sessionToken');
+
+    // Helper for authenticated fetch
+    async function authFetch(url, options = {}) {
+      options.headers = {
+        ...options.headers,
+        'X-Session-Token': sessionToken
+      };
+      if (options.body && typeof options.body === 'object') {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(options.body);
+      }
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        showLogin();
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    function showLogin() {
+      document.getElementById('login-overlay').style.display = 'flex';
+      document.getElementById('main-container').style.display = 'none';
+    }
+
+    function showDashboard() {
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('main-container').style.display = 'block';
+      initDashboard();
+    }
+
+    async function doLogin() {
+      const password = document.getElementById('login-password').value;
+      const errorEl = document.getElementById('login-error');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          sessionToken = data.token;
+          localStorage.setItem('sessionToken', sessionToken);
+          errorEl.style.display = 'none';
+          showDashboard();
+        } else {
+          errorEl.textContent = 'Invalid password';
+          errorEl.style.display = 'block';
+        }
+      } catch (e) {
+        errorEl.textContent = 'Connection error';
+        errorEl.style.display = 'block';
+      }
+    }
+
+    function doLogout() {
+      sessionToken = null;
+      localStorage.removeItem('sessionToken');
+      showLogin();
+    }
+
+    async function checkAuth() {
+      if (!sessionToken) {
+        showLogin();
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/check', {
+          headers: { 'X-Session-Token': sessionToken }
+        });
+        const data = await res.json();
+        if (data.authenticated) {
+          showDashboard();
+        } else {
+          showLogin();
+        }
+      } catch (e) {
+        showLogin();
+      }
+    }
+
+    // ========== SETTINGS ==========
+    async function loadSettings() {
+      // Check API key status
+      try {
+        const res = await authFetch('/api/settings/apikey/status');
+        const data = await res.json();
+        document.getElementById('apikey-status').innerHTML = data.configured
+          ? '<span style="color:#22c55e;">✓ API Key configured</span>'
+          : '<span style="color:#f59e0b;">⚠️ API Key not set - pipeline features disabled</span>';
+      } catch (e) {}
+
+      // Load domains for settings
+      try {
+        const res = await authFetch('/api/domains');
+        const domains = await res.json();
+        document.getElementById('domains-list').innerHTML = domains.map(d => `
+          <div class="domain-item">
+            <span class="emoji">${d.emoji || '🔬'}</span>
+            <div class="info">
+              <div class="name">${d.name}</div>
+              <div class="keywords">${(d.keywords || []).map(k => `<span class="tag">${k}</span>`).join('')}</div>
+            </div>
+            <button onclick="editDomain('${d.id}')" style="background:#334155;">Edit</button>
+            <button onclick="deleteDomain('${d.id}')" style="background:#ef4444;">Delete</button>
+          </div>
+        `).join('');
+      } catch (e) {}
+    }
+
+    async function saveApiKey() {
+      const apiKey = document.getElementById('apikey-input').value;
+      if (!apiKey) return alert('Please enter an API key');
+
+      try {
+        await authFetch('/api/settings/apikey', {
+          method: 'POST',
+          body: { apiKey }
+        });
+        document.getElementById('apikey-input').value = '';
+        loadSettings();
+        alert('API Key saved for this session!');
+      } catch (e) {
+        alert('Error saving API key');
+      }
+    }
+
+    async function addDomain() {
+      const emoji = document.getElementById('new-domain-emoji').value || '🔬';
+      const name = document.getElementById('new-domain-name').value;
+      const keywordsStr = document.getElementById('new-domain-keywords').value;
+
+      if (!name) return alert('Please enter a domain name');
+
+      const keywords = keywordsStr.split(',').map(k => k.trim()).filter(k => k);
+      const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+      try {
+        await authFetch('/api/domains', {
+          method: 'POST',
+          body: { id, name, keywords, emoji }
+        });
+        document.getElementById('new-domain-emoji').value = '';
+        document.getElementById('new-domain-name').value = '';
+        document.getElementById('new-domain-keywords').value = '';
+        loadSettings();
+        loadDomains();
+        alert('Domain added!');
+      } catch (e) {
+        alert('Error adding domain');
+      }
+    }
+
+    async function deleteDomain(id) {
+      if (!confirm('Delete this domain?')) return;
+      try {
+        await authFetch(`/api/domains/${id}`, { method: 'DELETE' });
+        loadSettings();
+        loadDomains();
+      } catch (e) {
+        alert('Error deleting domain');
+      }
+    }
+
+    function editDomain(id) {
+      // Simple prompt-based editing
+      const newKeywords = prompt('Enter new keywords (comma separated):');
+      if (newKeywords === null) return;
+
+      const keywords = newKeywords.split(',').map(k => k.trim()).filter(k => k);
+      authFetch(`/api/domains/${id}`, {
+        method: 'PUT',
+        body: { keywords }
+      }).then(() => {
+        loadSettings();
+        loadDomains();
+      });
+    }
+
+    // ========== DASHBOARD ==========
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + '-panel').classList.add('active');
+
+        // Load settings when tab opened
+        if (tab.dataset.tab === 'settings') {
+          loadSettings();
+        }
+      });
+    });
+
+    // Load stats
+    async function loadStats() {
+      const res = await authFetch('/api/stats');
+      const stats = await res.json();
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card"><div class="number">${stats.discoveries}</div><div class="label">Discoveries</div></div>
+        <div class="stat-card"><div class="number">${stats.hypotheses}</div><div class="label">Hypotheses</div></div>
+        <div class="stat-card"><div class="number">${stats.projects}</div><div class="label">Projects</div></div>
+        <div class="stat-card"><div class="number">${stats.memory}</div><div class="label">Memories</div></div>
+        <div class="stat-card"><div class="number">${stats.feedback}</div><div class="label">Feedback</div></div>
+      `;
+    }
+
+    // Track selected discoveries
+    let selectedDiscoveries = new Set();
+
+    function updateSelectionUI() {
+      const count = selectedDiscoveries.size;
+      document.getElementById('selected-count').textContent = count;
+      document.getElementById('pipeline-selected-btn').disabled = count === 0;
+      document.getElementById('discoveries-toolbar').style.display = count > 0 ? 'block' : 'none';
+    }
+
+    function toggleDiscoverySelection(id, checkbox) {
+      if (checkbox.checked) {
+        selectedDiscoveries.add(id);
+      } else {
+        selectedDiscoveries.delete(id);
+      }
+      updateSelectionUI();
+    }
+
+    function selectAllDiscoveries() {
+      document.querySelectorAll('.discovery-checkbox').forEach(cb => {
+        cb.checked = true;
+        selectedDiscoveries.add(cb.dataset.id);
+      });
+      updateSelectionUI();
+    }
+
+    function clearSelection() {
+      document.querySelectorAll('.discovery-checkbox').forEach(cb => cb.checked = false);
+      selectedDiscoveries.clear();
+      updateSelectionUI();
+    }
+
+    // Load discoveries
+    async function loadDiscoveries() {
+      const discoveries = await authFetch('/api/discoveries').then(r => r.json());
+      if (discoveries.length === 0) {
+        document.getElementById('discoveries-list').innerHTML = '<div class="empty">No discoveries yet. Run a search!</div>';
+        document.getElementById('discoveries-toolbar').style.display = 'none';
+        return;
+      }
+      document.getElementById('discoveries-list').innerHTML = discoveries.map(d => `
+        <div class="card" style="position:relative;">
+          <div style="display:flex;gap:15px;align-items:flex-start;">
+            <input type="checkbox" class="discovery-checkbox" data-id="${d.id}"
+              onchange="toggleDiscoverySelection('${d.id}', this)"
+              style="width:20px;height:20px;margin-top:3px;cursor:pointer;accent-color:#8b5cf6;"
+              ${selectedDiscoveries.has(d.id) ? 'checked' : ''}>
+            <div style="flex:1;">
+              <h3 style="margin-bottom:8px;">
+                <a href="${d.url || '#'}" target="_blank" style="color:#f1f5f9;text-decoration:none;hover:underline;">
+                  ${d.title}
+                </a>
+              </h3>
+              <p>${(d.abstract || '').substring(0, 300)}...</p>
+              <div class="meta">
+                <span class="badge ${d.source}">${d.source}</span>
+                <span>${d.publication_date || 'No date'}</span>
+                ${d.priority ? '<span class="badge ' + d.priority + '">' + d.priority + '</span>' : ''}
+                ${d.processed ? '<span style="color:#22c55e;">✓ Processed</span>' : '<span style="color:#f59e0b;">⏳ Pending</span>'}
+              </div>
+              <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+                <a href="${d.url || '#'}" target="_blank" style="color:#38bdf8;font-size:13px;">📄 Read Paper →</a>
+                ${d.external_id ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${d.external_id}/" target="_blank" style="color:#38bdf8;font-size:13px;">PubMed</a>` : ''}
+              </div>
+              <div class="feedback-buttons">
+                <button class="feedback-btn useful" onclick="feedback('discovery','${d.id}',true)">👍 Useful</button>
+                <button class="feedback-btn not-useful" onclick="feedback('discovery','${d.id}',false)">👎</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load hypotheses
+    async function loadHypotheses() {
+      const hypotheses = await authFetch('/api/hypotheses').then(r => r.json());
+      if (hypotheses.length === 0) {
+        document.getElementById('hypotheses-list').innerHTML = '<div class="empty">No hypotheses yet. Run the pipeline!</div>';
+        return;
+      }
+      document.getElementById('hypotheses-list').innerHTML = hypotheses.map(h => `
+        <div class="card">
+          <h3>${h.title}</h3>
+          <p><strong>Statement:</strong> ${h.statement}</p>
+          <p style="margin-top:10px">${h.rationale || ''}</p>
+          <div class="meta">
+            <span>Confidence: ${(h.confidence_score * 100).toFixed(0)}%</span>
+            <span>Status: ${h.status}</span>
+          </div>
+          <div class="feedback-buttons">
+            <button class="feedback-btn useful" onclick="feedback('hypothesis','${h.id}',true)">👍 Pursue</button>
+            <button class="feedback-btn not-useful" onclick="feedback('hypothesis','${h.id}',false)">👎 Skip</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load projects
+    async function loadProjects() {
+      const projects = await authFetch('/api/projects').then(r => r.json());
+      if (projects.length === 0) {
+        document.getElementById('projects-list').innerHTML = '<div class="empty">No projects yet.</div>';
+        return;
+      }
+      document.getElementById('projects-list').innerHTML = projects.map(p => `
+        <div class="card">
+          <h3>${p.title}</h3>
+          <p>${p.objective}</p>
+          <div class="meta">
+            <span>${p.output_type}</span>
+            <span>${p.timeline_weeks} weeks</span>
+            <span>$${p.estimated_cost_usd?.toLocaleString() || 'TBD'}</span>
+            <span>Status: ${p.status}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load memory
+    async function loadMemory() {
+      const memories = await authFetch('/api/memory').then(r => r.json());
+      if (memories.length === 0) {
+        document.getElementById('memory-list').innerHTML = '<div class="empty">No memories yet. Add your first insight above!</div>';
+        return;
+      }
+      document.getElementById('memory-list').innerHTML = memories.map(m => `
+        <div class="card">
+          <h3>${m.importance === 'critical' ? '🔴' : m.importance === 'high' ? '🟠' : '⚪'} ${m.title}</h3>
+          <p>${m.content}</p>
+          <div class="meta">
+            <span>${m.category}</span>
+            <span>${m.created_at}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load schedule
+    async function loadSchedule() {
+      const data = await authFetch('/api/schedule').then(r => r.json());
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      document.getElementById('schedule-grid').innerHTML = days.map(day => `
+        <div class="schedule-day ${day === data.today ? 'today' : ''}">
+          <div class="day-name">${day.charAt(0).toUpperCase() + day.slice(1, 3)}</div>
+          <div class="domain">${data.schedule.rotation[day].name}</div>
+        </div>
+      `).join('');
+      document.getElementById('schedule-today').innerHTML = `Today: ${data.schedule.rotation[data.today].name}`;
+    }
+
+    // Add memory
+    async function addMemory() {
+      const title = document.getElementById('memory-title').value;
+      const content = document.getElementById('memory-content').value;
+      const category = document.getElementById('memory-category').value;
+      const importance = document.getElementById('memory-importance').value;
+
+      if (!title || !content) return alert('Please fill in title and content');
+
+      await authFetch('/api/memory', {
+        method: 'POST',
+        body: { title, content, category, importance }
+      });
+
+      document.getElementById('memory-title').value = '';
+      document.getElementById('memory-content').value = '';
+      loadMemory();
+      loadStats();
+    }
+
+    // Add feedback
+    async function feedback(entityType, entityId, useful) {
+      await authFetch('/api/feedback', {
+        method: 'POST',
+        body: { entityType, entityId, useful, rating: useful ? 5 : 1 }
+      });
+      loadStats();
+    }
+
+    // Search
+    async function doSearch() {
+      const query = document.getElementById('search-query').value;
+      if (!query) return;
+
+      document.getElementById('search-btn').disabled = true;
+      document.getElementById('search-btn').textContent = 'Searching...';
+      document.getElementById('search-results').innerHTML = '<div class="loading">Searching PubMed...</div>';
+
+      try {
+        const data = await authFetch('/api/search', {
+          method: 'POST',
+          body: { query }
+        }).then(r => r.json());
+
+        if (data.results.length === 0) {
+          document.getElementById('search-results').innerHTML = '<div class="empty">No results found.</div>';
+        } else {
+          document.getElementById('search-results').innerHTML = `
+            <p style="margin-bottom:15px;color:#94a3b8">Found ${data.count} results</p>
+            ${data.results.map(d => `
+              <div class="card">
+                <h3>${d.title}</h3>
+                <p>${(d.abstract || '').substring(0, 300)}...</p>
+                <div class="meta">
+                  <span class="badge pubmed">pubmed</span>
+                  <span>${d.publication_date || 'No date'}</span>
+                  <a href="${d.url}" target="_blank" style="color:#38bdf8">View →</a>
+                </div>
+              </div>
+            `).join('')}
+          `;
+        }
+        loadStats();
+        loadDiscoveries();
+      } catch (e) {
+        document.getElementById('search-results').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
+      }
+
+      document.getElementById('search-btn').disabled = false;
+      document.getElementById('search-btn').textContent = 'Search';
+    }
+
+    // Enter key for search
+    document.getElementById('search-query').addEventListener('keypress', e => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    // Load domains for Run panel
+    let selectedDomain = null;
+
+    async function loadDomains() {
+      try {
+        const domains = await authFetch('/api/domains').then(r => r.json());
+        const container = document.getElementById('domain-buttons');
+
+        if (!domains || domains.length === 0) {
+          container.innerHTML = '<div class="empty">No domains configured</div>';
+          return;
+        }
+
+        container.innerHTML = domains.map(d => `
+          <button class="domain-btn" data-domain="${d.id}" style="
+            display:block;
+            width:100%;
+            padding:15px 20px;
+            background:#1e293b;
+            border:2px solid #334155;
+            border-radius:10px;
+            color:#e2e8f0;
+            font-size:16px;
+            text-align:left;
+            cursor:pointer;
+            transition:all 0.2s;
+          " onclick="selectDomain('${d.id}', this)">
+            <span style="font-size:18px;margin-right:10px;">${d.emoji || '🔬'}</span>
+            <strong>${d.name}</strong>
+            <span style="float:right;color:#64748b;font-size:12px;">${d.keywords?.length || 0} keywords</span>
+          </button>
+        `).join('') + `
+          <button id="run-btn" onclick="runScan()" style="
+            margin-top:15px;
+            width:100%;
+            padding:15px 20px;
+            font-size:18px;
+            background:#22c55e;
+            border-radius:10px;
+          " disabled>
+            ▶ Run Selected Domain
+          </button>
+          <button onclick="runScan('all')" style="
+            margin-top:10px;
+            width:100%;
+            padding:12px 20px;
+            font-size:14px;
+            background:#3b82f6;
+            border-radius:10px;
+          ">
+            🔄 Run All Domains
+          </button>
+        `;
+      } catch (e) {
+        document.getElementById('domain-buttons').innerHTML = '<div class="empty">Error loading domains: ' + e.message + '</div>';
+      }
+    }
+
+    function selectDomain(domainId, btn) {
+      selectedDomain = domainId;
+      // Update button styles
+      document.querySelectorAll('.domain-btn').forEach(b => {
+        b.style.borderColor = '#334155';
+        b.style.background = '#1e293b';
+      });
+      btn.style.borderColor = '#22c55e';
+      btn.style.background = '#1a3a2a';
+      // Enable run button
+      document.getElementById('run-btn').disabled = false;
+      document.getElementById('run-btn').textContent = '▶ Run: ' + btn.querySelector('strong').textContent;
+    }
+
+    async function runScan(domainId) {
+      const domain = domainId || selectedDomain;
+      if (!domain) {
+        alert('Please select a domain first');
+        return;
+      }
+
+      const statusEl = document.getElementById('run-status');
+      const statusText = document.getElementById('run-status-text');
+      const progressBar = document.getElementById('run-progress-bar');
+      const resultsEl = document.getElementById('run-results');
+
+      // Show status
+      statusEl.style.display = 'block';
+      statusText.innerHTML = domain === 'all'
+        ? '🔄 Running all domains...'
+        : '🔎 Searching <strong>' + domain + '</strong>...';
+      progressBar.style.width = '10%';
+      resultsEl.innerHTML = '';
+
+      // Disable buttons
+      document.querySelectorAll('#domain-buttons button').forEach(b => b.disabled = true);
+
+      // Animate progress
+      let progress = 10;
+      const progressInterval = setInterval(() => {
+        if (progress < 90) {
+          progress += Math.random() * 15;
+          progressBar.style.width = Math.min(progress, 90) + '%';
+        }
+      }, 500);
+
+      try {
+        const response = await authFetch('/api/run', {
+          method: 'POST',
+          body: { domainId: domain }
+        });
+
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+
+        const data = await response.json();
+
+        if (data.success) {
+          statusText.innerHTML = '✅ Scan complete!';
+
+          if (data.results && data.results.length > 0) {
+            resultsEl.innerHTML = `
+              <div style="margin-top:20px;">
+                <h4 style="color:#22c55e;margin-bottom:15px;">Found ${data.totalDiscoveries || data.results.length} new papers</h4>
+                ${data.results.slice(0, 5).map(r => `
+                  <div class="card" style="margin-bottom:10px;padding:12px;">
+                    <strong>${r.title?.substring(0, 80) || 'Untitled'}${r.title?.length > 80 ? '...' : ''}</strong>
+                    <div style="font-size:12px;color:#64748b;margin-top:5px;">
+                      ${r.source || 'pubmed'} • ${r.publication_date || 'Recent'}
+                    </div>
+                  </div>
+                `).join('')}
+                ${data.results.length > 5 ? `<p style="color:#64748b;text-align:center;">...and ${data.results.length - 5} more</p>` : ''}
+              </div>
+            `;
+          } else {
+            resultsEl.innerHTML = `
+              <div style="text-align:center;padding:20px;color:#94a3b8;">
+                No new papers found for this domain in the last 30 days.
+              </div>
+            `;
+          }
+
+          // Refresh stats and discoveries
+          loadStats();
+          loadDiscoveries();
+        } else {
+          statusText.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+        }
+      } catch (e) {
+        clearInterval(progressInterval);
+        statusText.innerHTML = '❌ Error: ' + e.message;
+      }
+
+      // Re-enable buttons
+      document.querySelectorAll('#domain-buttons button').forEach(b => b.disabled = false);
+
+      // Hide progress after 3 seconds
+      setTimeout(() => {
+        progressBar.style.width = '0%';
+      }, 3000);
+    }
+
+    // Pipeline functions
+    async function runPipelineSelected() {
+      if (selectedDiscoveries.size === 0) {
+        alert('Please select at least one discovery');
+        return;
+      }
+      await runPipeline(Array.from(selectedDiscoveries));
+    }
+
+    async function runPipelineAll() {
+      if (!confirm('Run the full pipeline on all unprocessed discoveries? This will use the AI to generate hypotheses and may take a few minutes.')) {
+        return;
+      }
+      await runPipeline(null); // null means all unprocessed
+    }
+
+    async function runPipeline(discoveryIds) {
+      const statusEl = document.getElementById('run-status');
+      const statusText = document.getElementById('run-status-text');
+      const progressBar = document.getElementById('run-progress-bar');
+      const resultsEl = document.getElementById('run-results');
+
+      // Switch to Run tab to show progress
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-tab="run"]').classList.add('active');
+      document.getElementById('run-panel').classList.add('active');
+
+      statusEl.style.display = 'block';
+      statusText.innerHTML = discoveryIds
+        ? `🧠 Running pipeline on ${discoveryIds.length} selected papers...`
+        : '🧠 Running full pipeline on all unprocessed discoveries...';
+      progressBar.style.width = '10%';
+      resultsEl.innerHTML = '';
+
+      let progress = 10;
+      const progressInterval = setInterval(() => {
+        if (progress < 85) {
+          progress += Math.random() * 8;
+          progressBar.style.width = Math.min(progress, 85) + '%';
+        }
+      }, 1000);
+
+      try {
+        const response = await authFetch('/api/pipeline', {
+          method: 'POST',
+          body: { discoveryIds }
+        });
+
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+
+        const data = await response.json();
+
+        if (data.success) {
+          statusText.innerHTML = '✅ Pipeline complete!';
+          resultsEl.innerHTML = `
+            <div style="margin-top:20px;text-align:center;">
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px;">
+                <div class="stat-card">
+                  <div class="number" style="color:#8b5cf6;">${data.hypothesesGenerated || 0}</div>
+                  <div class="label">Hypotheses Generated</div>
+                </div>
+                <div class="stat-card">
+                  <div class="number" style="color:#22c55e;">${data.validated || 0}</div>
+                  <div class="label">Validated</div>
+                </div>
+                <div class="stat-card">
+                  <div class="number" style="color:#f59e0b;">${data.projectsCreated || 0}</div>
+                  <div class="label">Projects Created</div>
+                </div>
+              </div>
+              <p style="color:#94a3b8;">Check the Hypotheses and Projects tabs to see results!</p>
+            </div>
+          `;
+
+          // Refresh all data
+          loadStats();
+          loadDiscoveries();
+          loadHypotheses();
+          loadProjects();
+          clearSelection();
+        } else {
+          statusText.innerHTML = '❌ Pipeline error: ' + (data.error || 'Unknown error');
+        }
+      } catch (e) {
+        clearInterval(progressInterval);
+        statusText.innerHTML = '❌ Error: ' + e.message;
+      }
+
+      setTimeout(() => {
+        progressBar.style.width = '0%';
+      }, 3000);
+    }
+
+    // Initialize dashboard after login
+    function initDashboard() {
+      loadStats();
+      loadDiscoveries();
+      loadHypotheses();
+      loadProjects();
+      loadMemory();
+      loadSchedule();
+      loadDomains();
+    }
+
+    // Check auth on page load
+    checkAuth();
+  </script>
+</body>
+</html>

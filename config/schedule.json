@@ -1,0 +1,45 @@
+{
+  "rotation": {
+    "monday": {
+      "domain": "myostatin",
+      "name": "Myostatin & Muscle Preservation",
+      "description": "Focus on myostatin inhibitors, GLP-1 muscle effects, sarcopenia"
+    },
+    "tuesday": {
+      "domain": "surgical_ai",
+      "name": "Surgical AI & Computer Vision",
+      "description": "Focus on AI in surgery, endoscopy AI, surgical coaching"
+    },
+    "wednesday": {
+      "domain": "bariatric",
+      "name": "Bariatric, Metabolic & MASH",
+      "description": "Focus on bariatric procedures, MASH/MASLD, metabolic interventions"
+    },
+    "thursday": {
+      "domain": "digital_twin",
+      "name": "Digital Twins & Cardiometabolic",
+      "description": "Focus on computational models, digital twins, personalized medicine"
+    },
+    "friday": {
+      "domain": "ai_medicine",
+      "name": "AI in Medicine",
+      "description": "Focus on artificial intelligence applications in healthcare and medicine"
+    },
+    "saturday": {
+      "domain": "none",
+      "name": "No Scan",
+      "description": "Weekend - no automated scan"
+    },
+    "sunday": {
+      "domain": "none",
+      "name": "No Scan",
+      "description": "Weekend - no automated scan"
+    }
+  },
+  "settings": {
+    "maxArticlesPerDay": 30,
+    "daysBack": 30,
+    "runTime": "06:00",
+    "timezone": "Europe/Istanbul"
+  }
+}
