@@ -17,9 +17,20 @@ const sessions = new Map();
 
 app.use(express.json());
 
+// Request logging for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
+
 // Health check endpoint - must respond quickly for Railway
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+// Root path - explicit handler
+app.get('/', (req, res, next) => {
+  next(); // Let static middleware handle it
 });
 
 // Auth middleware - check session token
