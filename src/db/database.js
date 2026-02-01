@@ -77,6 +77,29 @@ class ResearchDatabase {
 
   // Discoveries
   insertDiscovery(discovery) {
+    // Check if discovery already exists by external_id and source
+    if (discovery.external_id && discovery.source) {
+      const existing = this.get(
+        'SELECT id FROM discoveries WHERE external_id = ? AND source = ?',
+        [discovery.external_id, discovery.source]
+      );
+      if (existing) {
+        return existing.id; // Skip duplicate
+      }
+    }
+
+    // Also check by normalized title to catch duplicates across sources
+    if (discovery.title) {
+      const normalizedTitle = discovery.title.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+      const existingByTitle = this.get(
+        `SELECT id FROM discoveries WHERE REPLACE(REPLACE(LOWER(title), ' ', ''), '.', '') LIKE ?`,
+        [`%${normalizedTitle.substring(0, 50)}%`]
+      );
+      if (existingByTitle) {
+        return existingByTitle.id; // Skip duplicate
+      }
+    }
+
     const id = discovery.id || uuidv4();
     this.run(`
       INSERT OR REPLACE INTO discoveries
@@ -179,6 +202,30 @@ class ResearchDatabase {
 
   updateHypothesisStatus(id, status) {
     this.run('UPDATE hypotheses SET status = ? WHERE id = ?', [status, id]);
+  }
+
+  // Update hypothesis content (for editing before validation)
+  updateHypothesis(id, updates) {
+    const fields = [];
+    const values = [];
+
+    if (updates.title !== undefined) { fields.push('title = ?'); values.push(updates.title); }
+    if (updates.statement !== undefined) { fields.push('statement = ?'); values.push(updates.statement); }
+    if (updates.rationale !== undefined) { fields.push('rationale = ?'); values.push(updates.rationale); }
+    if (updates.assumptions !== undefined) { fields.push('assumptions = ?'); values.push(JSON.stringify(updates.assumptions)); }
+    if (updates.testable_predictions !== undefined) { fields.push('testable_predictions = ?'); values.push(JSON.stringify(updates.testable_predictions)); }
+    if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+    this.run(`UPDATE hypotheses SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
+
+  // Get single hypothesis by ID
+  getHypothesis(id) {
+    const result = this.get('SELECT * FROM hypotheses WHERE id = ?', [id]);
+    return result ? this.parseHypothesis(result) : null;
   }
 
   parseHypothesis(row) {

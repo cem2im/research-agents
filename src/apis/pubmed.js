@@ -32,7 +32,8 @@ class PubMedAPI {
       maxResults = 20,
       minDate = null,
       maxDate = null,
-      sortBy = 'relevance' // 'relevance' or 'date'
+      sortBy = 'relevance', // 'relevance' or 'date'
+      originalStudiesOnly = true // Filter out reviews, meta-analyses, etc.
     } = options;
 
     await this.rateLimitWait();
@@ -44,10 +45,16 @@ class PubMedAPI {
       dateRange = `&datetype=pdat&mindate=${minDate}&maxdate=${max}`;
     }
 
+    // Add filter for original studies only (exclude reviews, meta-analyses, systematic reviews)
+    let filteredQuery = query;
+    if (originalStudiesOnly) {
+      filteredQuery = `(${query}) NOT (Review[pt] OR Systematic Review[pt] OR Meta-Analysis[pt] OR "review"[Title] OR "systematic review"[Title] OR "meta-analysis"[Title])`;
+    }
+
     // Search for PMIDs
     const searchUrl = this.buildUrl('esearch.fcgi', {
       db: 'pubmed',
-      term: query,
+      term: filteredQuery,
       retmax: maxResults,
       sort: sortBy === 'date' ? 'pub_date' : 'relevance',
       retmode: 'json'

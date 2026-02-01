@@ -132,6 +132,128 @@ app.get('/api/hypotheses', async (req, res) => {
   }
 });
 
+// Update hypothesis (for editing before validation)
+app.put('/api/hypotheses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, statement, rationale, assumptions, testable_predictions, status } = req.body;
+    const db = await getDatabase();
+
+    db.updateHypothesis(id, {
+      title, statement, rationale, assumptions, testable_predictions, status
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Generate hypotheses only (without validation) - for review/edit step
+app.post('/api/hypotheses/generate', async (req, res) => {
+  try {
+    const { discoveryIds } = req.body;
+    const db = await getDatabase();
+    const oracle = getAgent('oracle');
+    const triage = getAgent('triage');
+
+    let discoveries = [];
+
+    if (discoveryIds && discoveryIds.length > 0) {
+      for (const id of discoveryIds) {
+        const d = db.get('SELECT * FROM discoveries WHERE id = ?', [id]);
+        if (d) {
+          discoveries.push({
+            ...d,
+            authors: JSON.parse(d.authors || '[]'),
+            keywords: JSON.parse(d.keywords || '[]')
+          });
+        }
+      }
+    } else {
+      const rows = db.all('SELECT * FROM discoveries WHERE processed = 0 ORDER BY created_at DESC LIMIT 10');
+      discoveries = rows.map(d => ({
+        ...d,
+        authors: JSON.parse(d.authors || '[]'),
+        keywords: JSON.parse(d.keywords || '[]')
+      }));
+    }
+
+    if (discoveries.length === 0) {
+      return res.json({ success: true, hypothesesGenerated: 0, hypotheses: [] });
+    }
+
+    console.log(`\n💡 Generating hypotheses for ${discoveries.length} discoveries...`);
+
+    // Triage first
+    const triageResult = await triage.scoreDiscoveries(discoveries);
+    const highPriority = (triageResult?.scores || []).filter(s => s.priority === 'high' || s.priority === 'medium');
+
+    const allHypotheses = [];
+    for (const scored of highPriority.slice(0, 5)) {
+      const discovery = discoveries.find(d => d.id === scored.discovery_id);
+      if (!discovery) continue;
+
+      try {
+        const hypotheses = await oracle.generateHypotheses(discovery);
+        allHypotheses.push(...hypotheses.map(h => ({ ...h, discovery_title: discovery.title })));
+      } catch (e) {
+        console.error(`Error generating hypotheses for ${discovery.id}:`, e.message);
+      }
+    }
+
+    console.log(`✅ Generated ${allHypotheses.length} hypotheses (pending review)`);
+
+    res.json({
+      success: true,
+      hypothesesGenerated: allHypotheses.length,
+      hypotheses: allHypotheses
+    });
+  } catch (e) {
+    console.error('Hypothesis generation error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Validate a single hypothesis (after editing)
+app.post('/api/hypotheses/:id/validate', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    const sage = getAgent('sage');
+    const architect = getAgent('architect');
+
+    const hypothesis = db.getHypothesis(id);
+    if (!hypothesis) {
+      return res.status(404).json({ error: 'Hypothesis not found' });
+    }
+
+    console.log(`\n🔬 Validating hypothesis: ${hypothesis.title}...`);
+
+    const validation = await sage.validateHypothesis(hypothesis);
+    let projectCreated = false;
+
+    if (validation && (validation.recommendation === 'pursue' || validation.recommendation === 'modify')) {
+      const project = await architect.designProject(hypothesis, validation);
+      if (project) {
+        projectCreated = true;
+      }
+    }
+
+    // Mark hypothesis as validated
+    db.updateHypothesisStatus(id, 'validated');
+
+    res.json({
+      success: true,
+      validation,
+      projectCreated
+    });
+  } catch (e) {
+    console.error('Validation error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/projects', async (req, res) => {
   try {
     const db = await getDatabase();

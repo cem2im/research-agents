@@ -343,7 +343,52 @@
     </div>
 
     <div class="panel" id="hypotheses-panel">
+      <div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="generateHypothesesOnly()" style="background:#8b5cf6;padding:12px 20px;">
+          💡 Generate Hypotheses (for Review)
+        </button>
+        <span style="color:#94a3b8;align-self:center;font-size:13px;">
+          Generate hypotheses first, then edit and validate them individually
+        </span>
+      </div>
       <div id="hypotheses-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <!-- Hypothesis Edit Modal -->
+    <div id="hypothesis-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:1000;overflow-y:auto;">
+      <div style="max-width:700px;margin:40px auto;padding:20px;">
+        <div class="card" style="background:#1e293b;">
+          <h3 style="margin-bottom:20px;">✏️ Edit Hypothesis</h3>
+          <input type="hidden" id="edit-hypothesis-id">
+          <div style="display:grid;gap:15px;">
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Title</label>
+              <input type="text" id="edit-hypothesis-title" style="width:100%;">
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Statement</label>
+              <textarea id="edit-hypothesis-statement" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Rationale</label>
+              <textarea id="edit-hypothesis-rationale" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Assumptions (one per line)</label>
+              <textarea id="edit-hypothesis-assumptions" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Testable Predictions (one per line)</label>
+              <textarea id="edit-hypothesis-predictions" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:10px;">
+              <button onclick="saveHypothesis()" style="flex:1;background:#22c55e;">💾 Save</button>
+              <button onclick="saveAndValidate()" style="flex:1;background:#8b5cf6;">🔬 Save & Validate</button>
+              <button onclick="closeHypothesisModal()" style="flex:1;background:#334155;">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="panel" id="projects-panel">
@@ -717,17 +762,36 @@
     async function loadHypotheses() {
       const hypotheses = await authFetch('/api/hypotheses').then(r => r.json());
       if (hypotheses.length === 0) {
-        document.getElementById('hypotheses-list').innerHTML = '<div class="empty">No hypotheses yet. Run the pipeline!</div>';
+        document.getElementById('hypotheses-list').innerHTML = '<div class="empty">No hypotheses yet. Click "Generate Hypotheses" to create some from your discoveries!</div>';
         return;
       }
       document.getElementById('hypotheses-list').innerHTML = hypotheses.map(h => `
         <div class="card">
-          <h3>${h.title}</h3>
-          <p><strong>Statement:</strong> ${h.statement}</p>
-          <p style="margin-top:10px">${h.rationale || ''}</p>
-          <div class="meta">
-            <span>Confidence: ${(h.confidence_score * 100).toFixed(0)}%</span>
-            <span>Status: ${h.status}</span>
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:15px;">
+            <div style="flex:1;">
+              <h3>${h.title}</h3>
+              <p><strong>Statement:</strong> ${h.statement}</p>
+              <p style="margin-top:10px">${h.rationale || ''}</p>
+              ${h.assumptions && h.assumptions.length > 0 ? `
+                <div style="margin-top:10px;">
+                  <strong style="font-size:13px;color:#94a3b8;">Assumptions:</strong>
+                  <ul style="margin:5px 0 0 20px;font-size:13px;color:#64748b;">
+                    ${h.assumptions.map(a => `<li>${a}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+              <div class="meta">
+                <span>Confidence: ${(h.confidence_score * 100).toFixed(0)}%</span>
+                <span class="badge ${h.status === 'validated' ? 'high' : h.status === 'pending' ? 'medium' : 'low'}">${h.status}</span>
+                ${h.discovery_title ? `<span style="color:#64748b;">From: ${h.discovery_title.substring(0,50)}...</span>` : ''}
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button onclick="editHypothesis('${h.id}')" style="padding:8px 16px;font-size:13px;background:#334155;">✏️ Edit</button>
+              ${h.status !== 'validated' ? `
+                <button onclick="validateHypothesis('${h.id}')" style="padding:8px 16px;font-size:13px;background:#8b5cf6;">🔬 Validate</button>
+              ` : ''}
+            </div>
           </div>
           <div class="feedback-buttons">
             <button class="feedback-btn useful" onclick="feedback('hypothesis','${h.id}',true)">👍 Pursue</button>
@@ -735,6 +799,187 @@
           </div>
         </div>
       `).join('');
+    }
+
+    // Hypothesis editing functions
+    let currentHypotheses = [];
+
+    async function generateHypothesesOnly() {
+      const selectedIds = Array.from(selectedDiscoveries);
+
+      if (!confirm(selectedIds.length > 0
+        ? `Generate hypotheses from ${selectedIds.length} selected papers?`
+        : 'Generate hypotheses from all unprocessed discoveries?')) {
+        return;
+      }
+
+      const statusEl = document.getElementById('run-status');
+      const statusText = document.getElementById('run-status-text');
+      const progressBar = document.getElementById('run-progress-bar');
+
+      // Switch to Run tab for progress
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-tab="run"]').classList.add('active');
+      document.getElementById('run-panel').classList.add('active');
+
+      statusEl.style.display = 'block';
+      statusText.innerHTML = '💡 Generating hypotheses...';
+      progressBar.style.width = '20%';
+
+      let progress = 20;
+      const interval = setInterval(() => {
+        if (progress < 85) {
+          progress += Math.random() * 10;
+          progressBar.style.width = Math.min(progress, 85) + '%';
+        }
+      }, 800);
+
+      try {
+        const response = await authFetch('/api/hypotheses/generate', {
+          method: 'POST',
+          body: { discoveryIds: selectedIds.length > 0 ? selectedIds : null }
+        });
+
+        clearInterval(interval);
+        progressBar.style.width = '100%';
+
+        const data = await response.json();
+
+        if (data.success) {
+          statusText.innerHTML = `✅ Generated ${data.hypothesesGenerated} hypotheses!`;
+          document.getElementById('run-results').innerHTML = `
+            <div style="margin-top:20px;text-align:center;">
+              <p style="color:#22c55e;font-size:18px;">💡 ${data.hypothesesGenerated} hypotheses created</p>
+              <p style="color:#94a3b8;margin-top:10px;">Go to the Hypotheses tab to review and edit them before validation.</p>
+              <button onclick="document.querySelector('[data-tab=hypotheses]').click()" style="margin-top:15px;background:#8b5cf6;">
+                View Hypotheses →
+              </button>
+            </div>
+          `;
+          loadStats();
+          loadHypotheses();
+        } else {
+          statusText.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+        }
+      } catch (e) {
+        clearInterval(interval);
+        statusText.innerHTML = '❌ Error: ' + e.message;
+      }
+
+      setTimeout(() => progressBar.style.width = '0%', 3000);
+    }
+
+    async function editHypothesis(id) {
+      try {
+        const hypotheses = await authFetch('/api/hypotheses').then(r => r.json());
+        const h = hypotheses.find(x => x.id === id);
+        if (!h) return alert('Hypothesis not found');
+
+        document.getElementById('edit-hypothesis-id').value = h.id;
+        document.getElementById('edit-hypothesis-title').value = h.title || '';
+        document.getElementById('edit-hypothesis-statement').value = h.statement || '';
+        document.getElementById('edit-hypothesis-rationale').value = h.rationale || '';
+        document.getElementById('edit-hypothesis-assumptions').value = (h.assumptions || []).join('\n');
+        document.getElementById('edit-hypothesis-predictions').value = (h.testable_predictions || []).join('\n');
+
+        document.getElementById('hypothesis-modal').style.display = 'block';
+      } catch (e) {
+        alert('Error loading hypothesis: ' + e.message);
+      }
+    }
+
+    function closeHypothesisModal() {
+      document.getElementById('hypothesis-modal').style.display = 'none';
+    }
+
+    async function saveHypothesis() {
+      const id = document.getElementById('edit-hypothesis-id').value;
+      const data = {
+        title: document.getElementById('edit-hypothesis-title').value,
+        statement: document.getElementById('edit-hypothesis-statement').value,
+        rationale: document.getElementById('edit-hypothesis-rationale').value,
+        assumptions: document.getElementById('edit-hypothesis-assumptions').value.split('\n').filter(x => x.trim()),
+        testable_predictions: document.getElementById('edit-hypothesis-predictions').value.split('\n').filter(x => x.trim())
+      };
+
+      try {
+        await authFetch(`/api/hypotheses/${id}`, { method: 'PUT', body: data });
+        closeHypothesisModal();
+        loadHypotheses();
+        alert('Hypothesis saved!');
+      } catch (e) {
+        alert('Error saving: ' + e.message);
+      }
+    }
+
+    async function saveAndValidate() {
+      const id = document.getElementById('edit-hypothesis-id').value;
+      await saveHypothesis();
+      closeHypothesisModal();
+      await validateHypothesis(id);
+    }
+
+    async function validateHypothesis(id) {
+      if (!confirm('Run AI validation on this hypothesis? This will check for supporting/contradicting evidence and potentially create a project.')) {
+        return;
+      }
+
+      const statusEl = document.getElementById('run-status');
+      const statusText = document.getElementById('run-status-text');
+      const progressBar = document.getElementById('run-progress-bar');
+
+      // Show progress in Run panel
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-tab="run"]').classList.add('active');
+      document.getElementById('run-panel').classList.add('active');
+
+      statusEl.style.display = 'block';
+      statusText.innerHTML = '🔬 Validating hypothesis...';
+      progressBar.style.width = '30%';
+
+      let progress = 30;
+      const interval = setInterval(() => {
+        if (progress < 90) {
+          progress += Math.random() * 8;
+          progressBar.style.width = Math.min(progress, 90) + '%';
+        }
+      }, 1000);
+
+      try {
+        const response = await authFetch(`/api/hypotheses/${id}/validate`, { method: 'POST' });
+        clearInterval(interval);
+        progressBar.style.width = '100%';
+
+        const data = await response.json();
+
+        if (data.success) {
+          statusText.innerHTML = '✅ Validation complete!';
+          document.getElementById('run-results').innerHTML = `
+            <div style="margin-top:20px;">
+              <div class="card">
+                <h4 style="color:#22c55e;margin-bottom:15px;">Validation Results</h4>
+                ${data.validation ? `
+                  <p><strong>Recommendation:</strong> <span class="badge ${data.validation.recommendation === 'pursue' ? 'high' : 'medium'}">${data.validation.recommendation}</span></p>
+                  <p style="margin-top:10px;">${data.validation.summary || ''}</p>
+                  ${data.projectCreated ? '<p style="margin-top:10px;color:#22c55e;">✅ Project created! Check the Projects tab.</p>' : ''}
+                ` : '<p>No validation data returned.</p>'}
+              </div>
+            </div>
+          `;
+          loadStats();
+          loadHypotheses();
+          loadProjects();
+        } else {
+          statusText.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+        }
+      } catch (e) {
+        clearInterval(interval);
+        statusText.innerHTML = '❌ Error: ' + e.message;
+      }
+
+      setTimeout(() => progressBar.style.width = '0%', 3000);
     }
 
     // Load projects
