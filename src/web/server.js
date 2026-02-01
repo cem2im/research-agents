@@ -17,10 +17,15 @@ const sessions = new Map();
 
 app.use(express.json());
 
+// Health check endpoint - must respond quickly for Railway
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // Auth middleware - check session token
 const authMiddleware = (req, res, next) => {
-  // Allow auth endpoints
-  if (req.path === '/api/auth/login' || req.path === '/api/auth/check') {
+  // Allow auth endpoints and health check
+  if (req.path === '/api/auth/login' || req.path === '/api/auth/check' || req.path === '/health') {
     return next();
   }
 
