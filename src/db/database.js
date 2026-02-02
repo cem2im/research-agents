@@ -862,9 +862,9 @@ class ResearchDatabase {
   addMilestoneAssignee(assignee) {
     const id = assignee.id || uuidv4();
     this.run(`
-      INSERT INTO milestone_assignees (id, milestone_id, name, email, role)
-      VALUES (?, ?, ?, ?, ?)
-    `, [id, assignee.milestone_id, assignee.name, this.nullify(assignee.email), assignee.role || 'assignee']);
+      INSERT INTO milestone_assignees (id, milestone_id, name, email, phone, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [id, assignee.milestone_id, assignee.name, this.nullify(assignee.email), this.nullify(assignee.phone), assignee.role || 'assignee']);
     return id;
   }
 
@@ -952,6 +952,47 @@ class ResearchDatabase {
       ...m,
       assignees: this.getMilestoneAssignees(m.id)
     }));
+  }
+
+  // Get pending WhatsApp reminders (not sent yet, with phone numbers)
+  getPendingWhatsAppReminders() {
+    return this.all(`
+      SELECT pr.*, tm.title as milestone_title, tm.due_date, tm.status as milestone_status,
+        tp.title as project_title, tp.priority as project_priority,
+        ma.name as assignee_name, ma.phone as assignee_phone
+      FROM project_reminders pr
+      JOIN tracked_milestones tm ON pr.milestone_id = tm.id
+      JOIN tracked_projects tp ON tm.project_id = tp.id
+      JOIN milestone_assignees ma ON tm.id = ma.milestone_id
+      WHERE pr.status = 'pending'
+        AND ma.phone IS NOT NULL
+        AND ma.phone != ''
+      ORDER BY pr.created_at ASC
+    `);
+  }
+
+  // Get overdue milestones with phone contacts for auto-reminders
+  getOverdueMilestonesWithPhones() {
+    return this.all(`
+      SELECT tm.*, tp.title as project_title, tp.priority as project_priority,
+        ma.name as assignee_name, ma.phone as assignee_phone, ma.id as assignee_id
+      FROM tracked_milestones tm
+      JOIN tracked_projects tp ON tm.project_id = tp.id
+      JOIN milestone_assignees ma ON tm.id = ma.milestone_id
+      WHERE tm.status IN ('pending', 'in_progress')
+        AND tm.due_date IS NOT NULL
+        AND tm.due_date <= date('now')
+        AND ma.phone IS NOT NULL
+        AND ma.phone != ''
+        AND (ma.notified_at IS NULL OR ma.notified_at < date('now', '-1 day'))
+      ORDER BY tm.due_date ASC
+    `);
+  }
+
+  // Mark assignee as notified
+  markAssigneeNotified(assigneeId) {
+    this.run('UPDATE milestone_assignees SET notified_at = ? WHERE id = ?', 
+      [new Date().toISOString(), assigneeId]);
   }
 }
 

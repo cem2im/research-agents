@@ -607,9 +607,12 @@
     </div>
 
     <!-- New Project Modal -->
-    <div id="new-project-modal" class="modal-overlay" style="display:none;">
+    <div id="new-project-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeNewProjectModal()">
       <div class="modal-content">
-        <h3 style="margin-bottom:20px;">🆕 Create New Project</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h3 style="margin:0;">🆕 Create New Project</h3>
+          <button onclick="closeNewProjectModal()" style="background:transparent;font-size:24px;padding:0;width:40px;height:40px;">×</button>
+        </div>
         <div id="new-project-step-1">
           <div style="display:grid;gap:15px;">
             <div>
@@ -656,8 +659,9 @@
               </div>
             </div>
           </div>
-          <div style="display:flex;gap:10px;margin-top:20px;">
+          <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
             <button onclick="closeNewProjectModal()" style="flex:1;background:#334155;">Cancel</button>
+            <button onclick="skipToManualMilestones()" style="flex:1;background:#334155;">Skip AI →</button>
             <button onclick="generateProjectMilestones()" style="flex:1;background:#8b5cf6;">🤖 Generate Milestones →</button>
           </div>
         </div>
@@ -1850,6 +1854,35 @@
       document.getElementById('new-project-step-2').style.display = 'none';
     }
 
+    // Store form data for project creation
+    let pendingProjectData = {};
+
+    function skipToManualMilestones() {
+      const title = document.getElementById('new-proj-title').value;
+      if (!title) {
+        alert('Please enter a project title');
+        return;
+      }
+      // Save form data
+      pendingProjectData = {
+        title: document.getElementById('new-proj-title').value,
+        description: document.getElementById('new-proj-desc').value,
+        project_type: document.getElementById('new-proj-type').value,
+        priority: document.getElementById('new-proj-priority').value,
+        group_id: document.getElementById('new-proj-group').value || null,
+        target_date: document.getElementById('new-proj-target').value || null
+      };
+      
+      generatedMilestones = [
+        { title: 'Milestone 1', description: '', estimated_days: 7 },
+        { title: 'Milestone 2', description: '', estimated_days: 7 },
+        { title: 'Milestone 3', description: '', estimated_days: 7 }
+      ];
+      renderGeneratedMilestones();
+      document.getElementById('new-project-step-1').style.display = 'none';
+      document.getElementById('new-project-step-2').style.display = 'block';
+    }
+
     async function generateProjectMilestones() {
       const title = document.getElementById('new-proj-title').value;
       const description = document.getElementById('new-proj-desc').value;
@@ -1861,7 +1894,19 @@
         return;
       }
 
-      document.getElementById('new-project-step-1').innerHTML = '<div class="loading">🤖 Generating milestones...</div>';
+      // Save form data BEFORE replacing HTML
+      pendingProjectData = {
+        title: title,
+        description: description,
+        project_type: projectType,
+        priority: document.getElementById('new-proj-priority').value,
+        group_id: document.getElementById('new-proj-group').value || null,
+        target_date: targetDate || null
+      };
+
+      const step1 = document.getElementById('new-project-step-1');
+      const originalHTML = step1.innerHTML;
+      step1.innerHTML = '<div class="loading">🤖 Generating milestones... (may take 10-15 seconds)</div>';
 
       try {
         const response = await authFetch('/api/tracker/projects/generate-milestones', {
@@ -1875,11 +1920,11 @@
         generatedMilestones = data.milestones;
         renderGeneratedMilestones();
         
-        document.getElementById('new-project-step-1').style.display = 'none';
+        step1.style.display = 'none';
         document.getElementById('new-project-step-2').style.display = 'block';
       } catch (e) {
-        alert('Error generating milestones: ' + e.message);
-        location.reload();
+        alert('Error generating milestones: ' + e.message + '\n\nTry "Skip AI" to add milestones manually.');
+        step1.innerHTML = originalHTML;
       }
     }
 
@@ -1900,20 +1945,23 @@
     }
 
     async function createProjectWithMilestones() {
+      // Use saved form data
       const project = {
-        title: document.getElementById('new-proj-title').value,
-        description: document.getElementById('new-proj-desc').value,
-        project_type: document.getElementById('new-proj-type').value,
-        priority: document.getElementById('new-proj-priority').value,
-        group_id: document.getElementById('new-proj-group').value || null,
-        target_date: document.getElementById('new-proj-target').value || null,
+        ...pendingProjectData,
         start_date: new Date().toISOString().split('T')[0]
       };
+
+      if (!project.title) {
+        alert('Project title is missing. Please go back and fill the form.');
+        return;
+      }
 
       try {
         // Create project
         const projRes = await authFetch('/api/tracker/projects', { method: 'POST', body: project });
         const projData = await projRes.json();
+        
+        if (projData.error) throw new Error(projData.error);
         
         // Create milestones
         if (generatedMilestones.length > 0) {
@@ -1925,7 +1973,7 @@
         
         closeNewProjectModal();
         loadTrackerData();
-        alert('Project created!');
+        alert('Project created successfully!');
       } catch (e) {
         alert('Error creating project: ' + e.message);
       }
@@ -1990,6 +2038,8 @@
     function renderMilestoneItem(m, index) {
       const statusIcons = { pending: '⏳', in_progress: '🔵', completed: '✅', blocked: '🚫', skipped: '⏭' };
       const isCurrent = m.status === 'in_progress';
+      const hasPhone = m.assignees && m.assignees.some(a => a.phone);
+      const hasEmail = m.assignees && m.assignees.some(a => a.email);
       
       return `
         <div class="milestone-item ${isCurrent ? 'current' : ''} ${m.status === 'completed' ? 'completed' : ''}">
@@ -2000,7 +2050,7 @@
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:12px;">
               ${m.due_date ? `<span style="color:#f59e0b;">📅 ${m.due_date}</span>` : ''}
               ${m.assignees && m.assignees.length > 0 ? 
-                m.assignees.map(a => `<span class="assignee-tag">👤 ${a.name}</span>`).join('') : 
+                m.assignees.map(a => `<span class="assignee-tag">👤 ${a.name}${a.phone ? ' 📱' : ''}${a.email ? ' ✉️' : ''}</span>`).join('') : 
                 '<span style="color:#64748b;">No assignees</span>'
               }
             </div>
@@ -2012,8 +2062,10 @@
               <option value="completed" ${m.status==='completed'?'selected':''}>✅ Completed</option>
               <option value="blocked" ${m.status==='blocked'?'selected':''}>🚫 Blocked</option>
             </select>
-            ${m.assignees && m.assignees.some(a => a.email) ? 
-              `<button onclick="sendReminder('${m.id}')" style="padding:5px 10px;font-size:11px;background:#3b82f6;">📧 Remind</button>` : 
+            ${hasPhone ? 
+              `<button onclick="sendWhatsAppReminder('${m.id}')" style="padding:5px 10px;font-size:11px;background:#25D366;">📱 WhatsApp</button>` : 
+              hasEmail ?
+              `<button onclick="sendReminder('${m.id}')" style="padding:5px 10px;font-size:11px;background:#3b82f6;">📧 Email</button>` :
               `<button onclick="addAssignee('${m.id}')" style="padding:5px 10px;font-size:11px;background:#334155;">+ Assign</button>`
             }
           </div>
@@ -2051,12 +2103,13 @@
     async function addAssignee(milestoneId) {
       const name = prompt('Assignee name:');
       if (!name) return;
-      const email = prompt('Assignee email (optional):');
+      const phone = prompt('WhatsApp phone number (with country code, e.g., +905551234567):');
+      const email = prompt('Email (optional):');
       
       try {
         await authFetch(`/api/tracker/milestones/${milestoneId}/assignees`, {
           method: 'POST',
-          body: { name, email: email || null, role: 'assignee' }
+          body: { name, phone: phone || null, email: email || null, role: 'assignee' }
         });
         showProjectDetail(currentProjectDetail.id);
       } catch (e) { alert('Error: ' + e.message); }
@@ -2074,6 +2127,22 @@
           alert(data.note);
         } else {
           alert('Reminder sent to: ' + data.emails.join(', '));
+        }
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function sendWhatsAppReminder(milestoneId) {
+      const message = prompt('Add a message (optional):');
+      try {
+        const res = await authFetch(`/api/tracker/milestones/${milestoneId}/remind-whatsapp`, {
+          method: 'POST',
+          body: { message }
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('✅ WhatsApp reminder queued!\n\nWill be sent to: ' + data.phones.map(p => p.name).join(', ') + '\n\n(Clawdbot will deliver it shortly)');
+        } else {
+          alert('Error: ' + (data.error || 'Unknown error'));
         }
       } catch (e) { alert('Error: ' + e.message); }
     }

@@ -248,6 +248,7 @@ CREATE TABLE IF NOT EXISTS milestone_assignees (
     milestone_id TEXT NOT NULL REFERENCES tracked_milestones(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     email TEXT,
+    phone TEXT,                     -- WhatsApp phone number (with country code, e.g., +905551234567)
     role TEXT DEFAULT 'assignee',  -- 'owner', 'assignee', 'reviewer', 'approver'
     notified_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP

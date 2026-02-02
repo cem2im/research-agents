@@ -866,6 +866,76 @@ app.get('/api/tracker/upcoming', async (req, res) => {
   }
 });
 
+// Get pending WhatsApp reminders (for Clawdbot to send)
+app.get('/api/tracker/reminders/pending-whatsapp', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const reminders = db.getPendingWhatsAppReminders();
+    res.json(reminders);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get overdue milestones for auto-reminders
+app.get('/api/tracker/reminders/overdue', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const overdue = db.getOverdueMilestonesWithPhones();
+    res.json(overdue);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Mark assignee as notified (called after WhatsApp sent)
+app.post('/api/tracker/assignees/:assigneeId/notified', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.markAssigneeNotified(req.params.assigneeId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// WhatsApp Reminder (stores for Clawdbot to send)
+app.post('/api/tracker/milestones/:milestoneId/remind-whatsapp', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const milestone = db.getMilestone(req.params.milestoneId);
+    if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
+    
+    const project = db.getTrackedProject(milestone.project_id);
+    const assignees = milestone.assignees || [];
+    const phones = assignees.filter(a => a.phone).map(a => ({ name: a.name, phone: a.phone }));
+    
+    if (phones.length === 0) {
+      return res.status(400).json({ error: 'No assignees with phone numbers' });
+    }
+
+    // Create reminder record for Clawdbot to pick up
+    const reminderId = db.createReminder({
+      milestone_id: req.params.milestoneId,
+      recipient_emails: phones.map(p => p.phone), // reusing field for phones
+      subject: `🔔 Reminder: ${milestone.title}`,
+      message: req.body.message || `Reminder for "${milestone.title}" in project "${project.title}". Due: ${milestone.due_date || 'Not set'}`,
+      status: 'pending'
+    });
+
+    db.logProjectActivity(milestone.project_id, 'reminder_queued', `WhatsApp reminder queued for ${phones.map(p => p.name).join(', ')}`, req.params.milestoneId);
+
+    res.json({
+      success: true,
+      reminder_id: reminderId,
+      phones,
+      message: 'Reminder queued for WhatsApp delivery'
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Email Reminder (placeholder - needs Resend setup)
 app.post('/api/tracker/milestones/:milestoneId/remind', async (req, res) => {
   try {
