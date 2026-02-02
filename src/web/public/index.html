@@ -265,6 +265,126 @@
       font-size: 11px;
       margin: 2px;
     }
+    /* Project Tracker Styles */
+    .tracker-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .tracker-stat {
+      background: #1e293b;
+      padding: 16px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .tracker-stat .num { font-size: 28px; font-weight: bold; color: #38bdf8; }
+    .tracker-stat .lbl { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .project-card {
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border-left: 4px solid #3b82f6;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .project-card:hover { transform: translateX(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .project-card.priority-critical { border-left-color: #ef4444; }
+    .project-card.priority-high { border-left-color: #f59e0b; }
+    .project-card.priority-medium { border-left-color: #3b82f6; }
+    .project-card.priority-low { border-left-color: #22c55e; }
+    .progress-bar {
+      height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #38bdf8);
+      transition: width 0.3s;
+    }
+    .milestone-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 12px;
+      background: #0f172a;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+    .milestone-item.current { background: #1e3a5f; border: 1px solid #38bdf8; }
+    .milestone-item.completed { opacity: 0.7; }
+    .milestone-status {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .milestone-status.pending { background: #334155; }
+    .milestone-status.in_progress { background: #3b82f6; }
+    .milestone-status.completed { background: #22c55e; }
+    .milestone-status.blocked { background: #ef4444; }
+    .gantt-container {
+      overflow-x: auto;
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .assignee-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #334155;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin: 2px;
+    }
+    .assignee-tag .remove {
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    .assignee-tag .remove:hover { opacity: 1; }
+    .view-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .view-tab {
+      padding: 8px 16px;
+      background: #334155;
+      border: none;
+      border-radius: 6px;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .view-tab.active { background: #38bdf8; color: #0f172a; }
   </style>
 </head>
 <body>
@@ -292,6 +412,7 @@
       <button class="tab" data-tab="discoveries">Discoveries</button>
       <button class="tab" data-tab="hypotheses">Hypotheses</button>
       <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="tracker" style="background:#8b5cf6;color:white;">📋 Tracker</button>
       <button class="tab" data-tab="memory">Memory</button>
       <button class="tab" data-tab="schedule">Schedule</button>
       <button class="tab" data-tab="search">Search</button>
@@ -442,6 +563,139 @@
         <button onclick="doSearch()" id="search-btn">Search</button>
       </div>
       <div id="search-results"></div>
+    </div>
+
+    <div class="panel" id="tracker-panel">
+      <!-- Tracker Stats -->
+      <div class="tracker-grid" id="tracker-stats"></div>
+      
+      <!-- Upcoming Deadlines Alert -->
+      <div id="tracker-deadlines" style="margin-bottom:20px;"></div>
+      
+      <!-- Actions Bar -->
+      <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+        <button onclick="showNewProjectModal()" style="background:#22c55e;">+ New Project</button>
+        <button onclick="showGroupManager()" style="background:#334155;">📁 Manage Groups</button>
+        <select id="tracker-group-filter" onchange="loadTrackerProjects()" style="padding:10px;">
+          <option value="">All Groups</option>
+        </select>
+        <select id="tracker-status-filter" onchange="loadTrackerProjects()" style="padding:10px;">
+          <option value="">Active Projects</option>
+          <option value="completed">Completed</option>
+          <option value="paused">Paused</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      
+      <!-- View Toggle -->
+      <div class="view-tabs">
+        <button class="view-tab active" onclick="setTrackerView('list', this)">📋 List</button>
+        <button class="view-tab" onclick="setTrackerView('gantt', this)">📊 Gantt</button>
+      </div>
+      
+      <!-- Projects List View -->
+      <div id="tracker-list-view">
+        <div id="tracker-projects"><div class="loading">Loading projects...</div></div>
+      </div>
+      
+      <!-- Gantt View -->
+      <div id="tracker-gantt-view" style="display:none;">
+        <div class="gantt-container" id="gantt-chart">
+          <p style="color:#94a3b8;text-align:center;">Select a project to view Gantt chart</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Project Modal -->
+    <div id="new-project-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content">
+        <h3 style="margin-bottom:20px;">🆕 Create New Project</h3>
+        <div id="new-project-step-1">
+          <div style="display:grid;gap:15px;">
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Title *</label>
+              <input type="text" id="new-proj-title" placeholder="e.g., Phase 1 Myostatin Trial" style="width:100%;">
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Description / Summary *</label>
+              <textarea id="new-proj-desc" rows="4" placeholder="Describe your project. AI will generate milestones based on this..." style="width:100%;"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+              <div>
+                <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Type</label>
+                <select id="new-proj-type" style="width:100%;">
+                  <option value="clinical_trial">Clinical Trial</option>
+                  <option value="grant">Grant Application</option>
+                  <option value="case_report">Case Report</option>
+                  <option value="systematic_review">Systematic Review</option>
+                  <option value="publication">Publication</option>
+                  <option value="device">Device/Product</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Priority</label>
+                <select id="new-proj-priority" style="width:100%;">
+                  <option value="low">🟢 Low</option>
+                  <option value="medium" selected>🔵 Medium</option>
+                  <option value="high">🟠 High</option>
+                  <option value="critical">🔴 Critical</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+              <div>
+                <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Group</label>
+                <select id="new-proj-group" style="width:100%;">
+                  <option value="">No Group</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:5px;color:#94a3b8;font-size:13px;">Target Date</label>
+                <input type="date" id="new-proj-target" style="width:100%;">
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:20px;">
+            <button onclick="closeNewProjectModal()" style="flex:1;background:#334155;">Cancel</button>
+            <button onclick="generateProjectMilestones()" style="flex:1;background:#8b5cf6;">🤖 Generate Milestones →</button>
+          </div>
+        </div>
+        
+        <div id="new-project-step-2" style="display:none;">
+          <p style="color:#94a3b8;margin-bottom:15px;">Review and edit AI-generated milestones:</p>
+          <div id="generated-milestones"></div>
+          <div style="display:flex;gap:10px;margin-top:20px;">
+            <button onclick="backToStep1()" style="flex:1;background:#334155;">← Back</button>
+            <button onclick="createProjectWithMilestones()" style="flex:1;background:#22c55e;">✓ Create Project</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Detail Modal -->
+    <div id="project-detail-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content" style="max-width:800px;">
+        <div id="project-detail-content"></div>
+      </div>
+    </div>
+
+    <!-- Group Manager Modal -->
+    <div id="group-manager-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content" style="max-width:500px;">
+        <h3 style="margin-bottom:20px;">📁 Manage Project Groups</h3>
+        <div id="group-list"></div>
+        <div style="margin-top:20px;padding-top:15px;border-top:1px solid #334155;">
+          <h4 style="margin-bottom:10px;color:#94a3b8;">Add New Group</h4>
+          <div style="display:flex;gap:10px;">
+            <input type="text" id="new-group-icon" placeholder="📁" style="width:50px;text-align:center;">
+            <input type="text" id="new-group-name" placeholder="Group name" style="flex:1;">
+            <input type="color" id="new-group-color" value="#3b82f6" style="width:50px;padding:5px;">
+            <button onclick="addProjectGroup()">Add</button>
+          </div>
+        </div>
+        <button onclick="closeGroupManager()" style="width:100%;margin-top:15px;background:#334155;">Close</button>
+      </div>
     </div>
 
     <div class="panel" id="settings-panel">
@@ -1403,6 +1657,491 @@
 
     // Check auth on page load
     checkAuth();
+
+    // ============================================
+    // RESEARCH PROJECT TRACKER
+    // ============================================
+    
+    let trackerGroups = [];
+    let trackerProjects = [];
+    let currentTrackerView = 'list';
+    let generatedMilestones = [];
+    let currentProjectDetail = null;
+
+    async function loadTrackerData() {
+      await Promise.all([loadTrackerStats(), loadTrackerGroups(), loadTrackerProjects(), loadUpcomingDeadlines()]);
+    }
+
+    async function loadTrackerStats() {
+      try {
+        const stats = await authFetch('/api/tracker/stats').then(r => r.json());
+        document.getElementById('tracker-stats').innerHTML = `
+          <div class="tracker-stat"><div class="num">${stats.active_projects}</div><div class="lbl">Active</div></div>
+          <div class="tracker-stat"><div class="num">${stats.completed_projects}</div><div class="lbl">Completed</div></div>
+          <div class="tracker-stat"><div class="num" style="color:${stats.overdue_milestones > 0 ? '#ef4444' : '#22c55e'}">${stats.overdue_milestones}</div><div class="lbl">Overdue</div></div>
+          <div class="tracker-stat"><div class="num" style="color:#f59e0b">${stats.upcoming_milestones}</div><div class="lbl">Due This Week</div></div>
+        `;
+      } catch (e) { console.error('Stats error:', e); }
+    }
+
+    async function loadTrackerGroups() {
+      try {
+        trackerGroups = await authFetch('/api/tracker/groups').then(r => r.json());
+        const groupFilter = document.getElementById('tracker-group-filter');
+        const projGroup = document.getElementById('new-proj-group');
+        
+        groupFilter.innerHTML = '<option value="">All Groups</option>' + 
+          trackerGroups.map(g => `<option value="${g.id}">${g.icon} ${g.name}</option>`).join('');
+        projGroup.innerHTML = '<option value="">No Group</option>' + 
+          trackerGroups.map(g => `<option value="${g.id}">${g.icon} ${g.name}</option>`).join('');
+      } catch (e) { console.error('Groups error:', e); }
+    }
+
+    async function loadTrackerProjects() {
+      try {
+        const groupId = document.getElementById('tracker-group-filter').value;
+        const statusFilter = document.getElementById('tracker-status-filter').value;
+        
+        let url = '/api/tracker/projects?';
+        if (groupId) url += `group_id=${groupId}&`;
+        if (statusFilter === 'all') url += 'status_not=';
+        else if (statusFilter) url += `status=${statusFilter}`;
+        
+        trackerProjects = await authFetch(url).then(r => r.json());
+        renderTrackerProjects();
+      } catch (e) { console.error('Projects error:', e); }
+    }
+
+    function renderTrackerProjects() {
+      const container = document.getElementById('tracker-projects');
+      if (trackerProjects.length === 0) {
+        container.innerHTML = '<div class="empty">No projects yet. Create your first project!</div>';
+        return;
+      }
+
+      // Group projects by group
+      const grouped = {};
+      trackerProjects.forEach(p => {
+        const key = p.group_name || 'Ungrouped';
+        if (!grouped[key]) grouped[key] = { color: p.group_color || '#64748b', icon: p.group_icon || '📄', projects: [] };
+        grouped[key].projects.push(p);
+      });
+
+      container.innerHTML = Object.entries(grouped).map(([groupName, group]) => `
+        <div style="margin-bottom:20px;">
+          <h4 style="color:${group.color};margin-bottom:10px;">${group.icon} ${groupName}</h4>
+          ${group.projects.map(p => {
+            const progress = p.total_milestones > 0 ? Math.round((p.completed_milestones / p.total_milestones) * 100) : 0;
+            const priorityIcon = { critical: '🔴', high: '🟠', medium: '🔵', low: '🟢' }[p.priority] || '⚪';
+            return `
+              <div class="project-card priority-${p.priority}" onclick="showProjectDetail('${p.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:start;">
+                  <div>
+                    <strong>${p.title}</strong>
+                    <span style="margin-left:8px;font-size:12px;color:#64748b;">${priorityIcon}</span>
+                  </div>
+                  <span class="badge ${p.status === 'completed' ? 'high' : p.status === 'paused' ? 'medium' : 'low'}">${p.status}</span>
+                </div>
+                <p style="font-size:13px;color:#94a3b8;margin-top:6px;">${(p.description || '').substring(0, 100)}${p.description?.length > 100 ? '...' : ''}</p>
+                <div class="progress-bar">
+                  <div class="fill" style="width:${progress}%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#64748b;">
+                  <span>${p.completed_milestones}/${p.total_milestones} milestones</span>
+                  <span>${p.target_date ? '📅 ' + p.target_date : ''}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `).join('');
+    }
+
+    async function loadUpcomingDeadlines() {
+      try {
+        const deadlines = await authFetch('/api/tracker/upcoming?days=7').then(r => r.json());
+        const container = document.getElementById('tracker-deadlines');
+        
+        if (deadlines.length === 0) {
+          container.innerHTML = '';
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="background:#1e3a5f;border:1px solid #38bdf8;border-radius:10px;padding:15px;">
+            <h4 style="color:#38bdf8;margin-bottom:10px;">🔔 Upcoming Deadlines (Next 7 Days)</h4>
+            ${deadlines.slice(0, 5).map(d => `
+              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #334155;">
+                <span>${d.title} <span style="color:#64748b;">- ${d.project_title}</span></span>
+                <span style="color:#f59e0b;">📅 ${d.due_date}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (e) { console.error('Deadlines error:', e); }
+    }
+
+    function setTrackerView(view, btn) {
+      currentTrackerView = view;
+      document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      
+      document.getElementById('tracker-list-view').style.display = view === 'list' ? 'block' : 'none';
+      document.getElementById('tracker-gantt-view').style.display = view === 'gantt' ? 'block' : 'none';
+      
+      if (view === 'gantt') renderGanttChart();
+    }
+
+    function renderGanttChart() {
+      const container = document.getElementById('gantt-chart');
+      if (trackerProjects.length === 0) {
+        container.innerHTML = '<p style="color:#94a3b8;text-align:center;">No projects to display</p>';
+        return;
+      }
+
+      // Simple text-based Gantt for now
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - 7);
+      
+      container.innerHTML = `
+        <div style="min-width:800px;">
+          <div style="display:flex;border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:10px;">
+            <div style="width:200px;font-weight:bold;">Project</div>
+            <div style="flex:1;display:flex;justify-content:space-between;font-size:12px;color:#64748b;">
+              ${Array.from({length: 8}, (_, i) => {
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i * 7);
+                return `<span>${d.toLocaleDateString('en', {month:'short', day:'numeric'})}</span>`;
+              }).join('')}
+            </div>
+          </div>
+          ${trackerProjects.map(p => {
+            const progress = p.total_milestones > 0 ? Math.round((p.completed_milestones / p.total_milestones) * 100) : 0;
+            return `
+              <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #1e293b;">
+                <div style="width:200px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${p.title}">${p.title}</div>
+                <div style="flex:1;height:20px;background:#334155;border-radius:4px;overflow:hidden;">
+                  <div style="width:${progress}%;height:100%;background:linear-gradient(90deg, #22c55e, #38bdf8);"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <p style="text-align:center;margin-top:15px;font-size:12px;color:#64748b;">Click a project for detailed Gantt view</p>
+      `;
+    }
+
+    // New Project Modal
+    function showNewProjectModal() {
+      document.getElementById('new-project-modal').style.display = 'flex';
+      document.getElementById('new-project-step-1').style.display = 'block';
+      document.getElementById('new-project-step-2').style.display = 'none';
+      document.getElementById('new-proj-title').value = '';
+      document.getElementById('new-proj-desc').value = '';
+    }
+
+    function closeNewProjectModal() {
+      document.getElementById('new-project-modal').style.display = 'none';
+    }
+
+    function backToStep1() {
+      document.getElementById('new-project-step-1').style.display = 'block';
+      document.getElementById('new-project-step-2').style.display = 'none';
+    }
+
+    async function generateProjectMilestones() {
+      const title = document.getElementById('new-proj-title').value;
+      const description = document.getElementById('new-proj-desc').value;
+      const projectType = document.getElementById('new-proj-type').value;
+      const targetDate = document.getElementById('new-proj-target').value;
+
+      if (!title || !description) {
+        alert('Please enter a title and description');
+        return;
+      }
+
+      document.getElementById('new-project-step-1').innerHTML = '<div class="loading">🤖 Generating milestones...</div>';
+
+      try {
+        const response = await authFetch('/api/tracker/projects/generate-milestones', {
+          method: 'POST',
+          body: { title, description, project_type: projectType, target_date: targetDate }
+        });
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error);
+        
+        generatedMilestones = data.milestones;
+        renderGeneratedMilestones();
+        
+        document.getElementById('new-project-step-1').style.display = 'none';
+        document.getElementById('new-project-step-2').style.display = 'block';
+      } catch (e) {
+        alert('Error generating milestones: ' + e.message);
+        location.reload();
+      }
+    }
+
+    function renderGeneratedMilestones() {
+      document.getElementById('generated-milestones').innerHTML = generatedMilestones.map((m, i) => `
+        <div class="milestone-item" style="margin-bottom:8px;">
+          <span style="color:#64748b;width:24px;">${i + 1}.</span>
+          <div style="flex:1;">
+            <input type="text" value="${m.title}" onchange="generatedMilestones[${i}].title=this.value" style="width:100%;margin-bottom:5px;">
+            <input type="text" value="${m.description || ''}" placeholder="Description" onchange="generatedMilestones[${i}].description=this.value" style="width:100%;font-size:12px;">
+          </div>
+          <input type="number" value="${m.estimated_days || ''}" placeholder="Days" onchange="generatedMilestones[${i}].estimated_days=parseInt(this.value)" style="width:60px;">
+          <button onclick="generatedMilestones.splice(${i},1);renderGeneratedMilestones()" style="padding:5px 10px;background:#ef4444;">×</button>
+        </div>
+      `).join('') + `
+        <button onclick="generatedMilestones.push({title:'',description:'',estimated_days:7});renderGeneratedMilestones()" style="width:100%;background:#334155;margin-top:10px;">+ Add Milestone</button>
+      `;
+    }
+
+    async function createProjectWithMilestones() {
+      const project = {
+        title: document.getElementById('new-proj-title').value,
+        description: document.getElementById('new-proj-desc').value,
+        project_type: document.getElementById('new-proj-type').value,
+        priority: document.getElementById('new-proj-priority').value,
+        group_id: document.getElementById('new-proj-group').value || null,
+        target_date: document.getElementById('new-proj-target').value || null,
+        start_date: new Date().toISOString().split('T')[0]
+      };
+
+      try {
+        // Create project
+        const projRes = await authFetch('/api/tracker/projects', { method: 'POST', body: project });
+        const projData = await projRes.json();
+        
+        // Create milestones
+        if (generatedMilestones.length > 0) {
+          await authFetch(`/api/tracker/projects/${projData.id}/milestones/bulk`, {
+            method: 'POST',
+            body: { milestones: generatedMilestones }
+          });
+        }
+        
+        closeNewProjectModal();
+        loadTrackerData();
+        alert('Project created!');
+      } catch (e) {
+        alert('Error creating project: ' + e.message);
+      }
+    }
+
+    // Project Detail
+    async function showProjectDetail(projectId) {
+      try {
+        const project = await authFetch(`/api/tracker/projects/${projectId}`).then(r => r.json());
+        currentProjectDetail = project;
+        
+        const milestones = project.milestones || [];
+        const progress = milestones.length > 0 ? 
+          Math.round((milestones.filter(m => m.status === 'completed').length / milestones.length) * 100) : 0;
+
+        document.getElementById('project-detail-content').innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:20px;">
+            <div>
+              <h2 style="margin:0;">${project.title}</h2>
+              <p style="color:#94a3b8;margin-top:5px;">${project.group_name || 'No group'} • ${project.project_type}</p>
+            </div>
+            <button onclick="closeProjectDetail()" style="background:transparent;font-size:24px;padding:0;">×</button>
+          </div>
+          
+          <p style="margin-bottom:20px;">${project.description || ''}</p>
+          
+          <div style="display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap;">
+            <span class="badge ${project.status === 'active' ? 'low' : 'medium'}">${project.status}</span>
+            <span>Priority: ${{critical:'🔴',high:'🟠',medium:'🔵',low:'🟢'}[project.priority]} ${project.priority}</span>
+            ${project.target_date ? `<span>📅 Target: ${project.target_date}</span>` : ''}
+          </div>
+          
+          <div class="progress-bar" style="height:10px;margin-bottom:20px;">
+            <div class="fill" style="width:${progress}%"></div>
+          </div>
+          
+          <h3 style="margin-bottom:15px;">Milestones (${milestones.filter(m=>m.status==='completed').length}/${milestones.length})</h3>
+          
+          <div id="milestone-list">
+            ${milestones.map((m, i) => renderMilestoneItem(m, i)).join('')}
+          </div>
+          
+          <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+            <button onclick="addMilestoneToProject('${projectId}')" style="background:#334155;">+ Add Milestone</button>
+            <select onchange="updateProjectStatus('${projectId}', this.value)" style="padding:10px;">
+              <option value="" disabled selected>Change Status</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+              <option value="archived">Archived</option>
+            </select>
+            <button onclick="deleteProject('${projectId}')" style="background:#ef4444;">🗑 Delete Project</button>
+          </div>
+        `;
+        
+        document.getElementById('project-detail-modal').style.display = 'flex';
+      } catch (e) {
+        alert('Error loading project: ' + e.message);
+      }
+    }
+
+    function renderMilestoneItem(m, index) {
+      const statusIcons = { pending: '⏳', in_progress: '🔵', completed: '✅', blocked: '🚫', skipped: '⏭' };
+      const isCurrent = m.status === 'in_progress';
+      
+      return `
+        <div class="milestone-item ${isCurrent ? 'current' : ''} ${m.status === 'completed' ? 'completed' : ''}">
+          <div class="milestone-status ${m.status}">${statusIcons[m.status] || '⏳'}</div>
+          <div style="flex:1;">
+            <strong>${m.title}</strong>
+            ${m.description ? `<p style="font-size:12px;color:#94a3b8;margin:4px 0;">${m.description}</p>` : ''}
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:12px;">
+              ${m.due_date ? `<span style="color:#f59e0b;">📅 ${m.due_date}</span>` : ''}
+              ${m.assignees && m.assignees.length > 0 ? 
+                m.assignees.map(a => `<span class="assignee-tag">👤 ${a.name}</span>`).join('') : 
+                '<span style="color:#64748b;">No assignees</span>'
+              }
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <select onchange="updateMilestoneStatus('${m.id}', this.value)" style="padding:5px;font-size:12px;">
+              <option value="pending" ${m.status==='pending'?'selected':''}>⏳ Pending</option>
+              <option value="in_progress" ${m.status==='in_progress'?'selected':''}>🔵 In Progress</option>
+              <option value="completed" ${m.status==='completed'?'selected':''}>✅ Completed</option>
+              <option value="blocked" ${m.status==='blocked'?'selected':''}>🚫 Blocked</option>
+            </select>
+            ${m.assignees && m.assignees.some(a => a.email) ? 
+              `<button onclick="sendReminder('${m.id}')" style="padding:5px 10px;font-size:11px;background:#3b82f6;">📧 Remind</button>` : 
+              `<button onclick="addAssignee('${m.id}')" style="padding:5px 10px;font-size:11px;background:#334155;">+ Assign</button>`
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    function closeProjectDetail() {
+      document.getElementById('project-detail-modal').style.display = 'none';
+      loadTrackerData();
+    }
+
+    async function updateMilestoneStatus(milestoneId, status) {
+      try {
+        await authFetch(`/api/tracker/milestones/${milestoneId}`, { method: 'PUT', body: { status } });
+        showProjectDetail(currentProjectDetail.id);
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function updateProjectStatus(projectId, status) {
+      try {
+        await authFetch(`/api/tracker/projects/${projectId}`, { method: 'PUT', body: { status } });
+        closeProjectDetail();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function deleteProject(projectId) {
+      if (!confirm('Delete this project and all its milestones?')) return;
+      try {
+        await authFetch(`/api/tracker/projects/${projectId}`, { method: 'DELETE' });
+        closeProjectDetail();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function addAssignee(milestoneId) {
+      const name = prompt('Assignee name:');
+      if (!name) return;
+      const email = prompt('Assignee email (optional):');
+      
+      try {
+        await authFetch(`/api/tracker/milestones/${milestoneId}/assignees`, {
+          method: 'POST',
+          body: { name, email: email || null, role: 'assignee' }
+        });
+        showProjectDetail(currentProjectDetail.id);
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function sendReminder(milestoneId) {
+      const message = prompt('Add a message (optional):');
+      try {
+        const res = await authFetch(`/api/tracker/milestones/${milestoneId}/remind`, {
+          method: 'POST',
+          body: { message }
+        });
+        const data = await res.json();
+        if (data.note) {
+          alert(data.note);
+        } else {
+          alert('Reminder sent to: ' + data.emails.join(', '));
+        }
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function addMilestoneToProject(projectId) {
+      const title = prompt('Milestone title:');
+      if (!title) return;
+      
+      try {
+        const milestones = currentProjectDetail.milestones || [];
+        await authFetch(`/api/tracker/projects/${projectId}/milestones`, {
+          method: 'POST',
+          body: { title, sort_order: milestones.length }
+        });
+        showProjectDetail(projectId);
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Group Manager
+    function showGroupManager() {
+      renderGroupList();
+      document.getElementById('group-manager-modal').style.display = 'flex';
+    }
+
+    function closeGroupManager() {
+      document.getElementById('group-manager-modal').style.display = 'none';
+      loadTrackerGroups();
+    }
+
+    function renderGroupList() {
+      document.getElementById('group-list').innerHTML = trackerGroups.length === 0 ? 
+        '<p style="color:#64748b;">No groups yet</p>' :
+        trackerGroups.map(g => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#0f172a;border-radius:8px;margin-bottom:8px;">
+            <span style="font-size:20px;">${g.icon}</span>
+            <span style="flex:1;">${g.name}</span>
+            <span style="width:20px;height:20px;background:${g.color};border-radius:4px;"></span>
+            <button onclick="deleteGroup('${g.id}')" style="padding:5px 10px;background:#ef4444;font-size:12px;">×</button>
+          </div>
+        `).join('');
+    }
+
+    async function addProjectGroup() {
+      const name = document.getElementById('new-group-name').value;
+      const icon = document.getElementById('new-group-icon').value || '📁';
+      const color = document.getElementById('new-group-color').value;
+      
+      if (!name) return alert('Please enter a group name');
+      
+      try {
+        await authFetch('/api/tracker/groups', { method: 'POST', body: { name, icon, color } });
+        document.getElementById('new-group-name').value = '';
+        trackerGroups = await authFetch('/api/tracker/groups').then(r => r.json());
+        renderGroupList();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function deleteGroup(groupId) {
+      if (!confirm('Delete this group?')) return;
+      try {
+        await authFetch(`/api/tracker/groups/${groupId}`, { method: 'DELETE' });
+        trackerGroups = await authFetch('/api/tracker/groups').then(r => r.json());
+        renderGroupList();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Load tracker when tab is clicked
+    document.querySelector('[data-tab="tracker"]').addEventListener('click', loadTrackerData);
   </script>
 </body>
 </html>

@@ -188,3 +188,100 @@ CREATE INDEX IF NOT EXISTS idx_feedback_entity ON feedback(entity_type, entity_i
 CREATE INDEX IF NOT EXISTS idx_memory_category ON memory(category);
 CREATE INDEX IF NOT EXISTS idx_memory_active ON memory(active);
 CREATE INDEX IF NOT EXISTS idx_preferences_type ON preferences(preference_type);
+
+-- ============================================
+-- RESEARCH PROJECT TRACKER MODULE
+-- ============================================
+
+-- Project Groups (Categories)
+CREATE TABLE IF NOT EXISTS project_groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#3b82f6',
+    icon TEXT DEFAULT '📁',
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tracked Research Projects
+CREATE TABLE IF NOT EXISTS tracked_projects (
+    id TEXT PRIMARY KEY,
+    group_id TEXT REFERENCES project_groups(id),
+    title TEXT NOT NULL,
+    description TEXT,
+    project_type TEXT,          -- 'clinical_trial', 'grant', 'case_report', 'systematic_review', 'device', 'publication', 'other'
+    status TEXT DEFAULT 'active',  -- 'draft', 'active', 'paused', 'completed', 'archived'
+    priority TEXT DEFAULT 'medium', -- 'low', 'medium', 'high', 'critical'
+    current_milestone_id TEXT,
+    start_date TEXT,
+    target_date TEXT,
+    completed_date TEXT,
+    tags TEXT,                  -- JSON array
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Project Milestones
+CREATE TABLE IF NOT EXISTS tracked_milestones (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES tracked_projects(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'pending',  -- 'pending', 'in_progress', 'completed', 'blocked', 'skipped'
+    start_date TEXT,
+    due_date TEXT,
+    completed_date TEXT,
+    estimated_days INTEGER,
+    actual_days INTEGER,
+    dependencies TEXT,          -- JSON array of milestone IDs
+    blockers TEXT,              -- JSON array of blocker descriptions
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Milestone Assignees (multiple people per milestone)
+CREATE TABLE IF NOT EXISTS milestone_assignees (
+    id TEXT PRIMARY KEY,
+    milestone_id TEXT NOT NULL REFERENCES tracked_milestones(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    email TEXT,
+    role TEXT DEFAULT 'assignee',  -- 'owner', 'assignee', 'reviewer', 'approver'
+    notified_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Email Reminders
+CREATE TABLE IF NOT EXISTS project_reminders (
+    id TEXT PRIMARY KEY,
+    milestone_id TEXT NOT NULL REFERENCES tracked_milestones(id) ON DELETE CASCADE,
+    recipient_emails TEXT NOT NULL,  -- JSON array
+    subject TEXT,
+    message TEXT,
+    scheduled_at TEXT,
+    sent_at TEXT,
+    status TEXT DEFAULT 'pending',  -- 'pending', 'sent', 'failed'
+    error TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Project Activity Log
+CREATE TABLE IF NOT EXISTS project_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL REFERENCES tracked_projects(id) ON DELETE CASCADE,
+    milestone_id TEXT REFERENCES tracked_milestones(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,       -- 'created', 'updated', 'milestone_completed', 'reminder_sent', 'status_changed'
+    details TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for project tracker
+CREATE INDEX IF NOT EXISTS idx_tracked_projects_group ON tracked_projects(group_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_projects_status ON tracked_projects(status);
+CREATE INDEX IF NOT EXISTS idx_tracked_milestones_project ON tracked_milestones(project_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_milestones_status ON tracked_milestones(status);
+CREATE INDEX IF NOT EXISTS idx_milestone_assignees_milestone ON milestone_assignees(milestone_id);
+CREATE INDEX IF NOT EXISTS idx_project_reminders_milestone ON project_reminders(milestone_id);
+CREATE INDEX IF NOT EXISTS idx_project_activity_project ON project_activity(project_id);

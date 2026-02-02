@@ -585,6 +585,379 @@ app.get('/api/settings/apikey/status', (req, res) => {
   res.json({ configured: hasKey });
 });
 
+// ============================================
+// RESEARCH PROJECT TRACKER API
+// ============================================
+
+// Project Groups
+app.get('/api/tracker/groups', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    res.json(db.getProjectGroups());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tracker/groups', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const id = db.createProjectGroup(req.body);
+    res.json({ id, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/tracker/groups/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.updateProjectGroup(req.params.id, req.body);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/tracker/groups/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.deleteProjectGroup(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Tracked Projects
+app.get('/api/tracker/projects', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const filters = {
+      group_id: req.query.group_id,
+      status: req.query.status,
+      status_not: req.query.status_not || 'archived'
+    };
+    res.json(db.getTrackedProjects(filters));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/tracker/projects/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const project = db.getTrackedProject(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    project.milestones = db.getMilestones(req.params.id);
+    project.activity = db.getProjectActivity(req.params.id, 20);
+    res.json(project);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tracker/projects', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const id = db.createTrackedProject(req.body);
+    db.logProjectActivity(id, 'created', `Project "${req.body.title}" created`);
+    res.json({ id, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/tracker/projects/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.updateTrackedProject(req.params.id, req.body);
+    db.logProjectActivity(req.params.id, 'updated', 'Project updated');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/tracker/projects/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.deleteTrackedProject(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// AI Milestone Generation
+app.post('/api/tracker/projects/generate-milestones', async (req, res) => {
+  try {
+    const { title, description, project_type, target_date } = req.body;
+    
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic();
+    
+    const prompt = `You are a research project planning assistant. Generate a list of milestones for the following research project.
+
+Project Title: ${title}
+Project Type: ${project_type || 'research project'}
+Description: ${description}
+Target Completion: ${target_date || 'Not specified'}
+
+Generate 5-10 appropriate milestones for this type of project. Each milestone should have:
+- title: Short, clear milestone name
+- description: Brief description of what needs to be done
+- estimated_days: Rough estimate of days needed
+
+Return ONLY a JSON array of milestones, no other text. Example format:
+[
+  {"title": "Protocol Development", "description": "Draft study protocol and methods", "estimated_days": 14},
+  {"title": "IRB Submission", "description": "Submit to institutional review board", "estimated_days": 7}
+]`;
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const content = message.content[0].text;
+    // Extract JSON from response
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error('Failed to parse milestone response');
+    }
+    
+    const milestones = JSON.parse(jsonMatch[0]);
+    res.json({ milestones });
+  } catch (e) {
+    console.error('Milestone generation error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Milestones
+app.get('/api/tracker/projects/:projectId/milestones', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    res.json(db.getMilestones(req.params.projectId));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tracker/projects/:projectId/milestones', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const milestone = { ...req.body, project_id: req.params.projectId };
+    const id = db.createMilestone(milestone);
+    db.logProjectActivity(req.params.projectId, 'milestone_added', `Milestone "${req.body.title}" added`, id);
+    res.json({ id, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tracker/projects/:projectId/milestones/bulk', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const { milestones } = req.body;
+    const ids = [];
+    
+    milestones.forEach((m, index) => {
+      const id = db.createMilestone({
+        ...m,
+        project_id: req.params.projectId,
+        sort_order: index
+      });
+      ids.push(id);
+    });
+    
+    db.logProjectActivity(req.params.projectId, 'milestones_generated', `${milestones.length} milestones generated`);
+    res.json({ ids, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/tracker/milestones/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const milestone = db.getMilestone(req.params.id);
+    if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
+    
+    db.updateMilestone(req.params.id, req.body);
+    
+    // Log status changes
+    if (req.body.status && req.body.status !== milestone.status) {
+      const action = req.body.status === 'completed' ? 'milestone_completed' : 'milestone_updated';
+      db.logProjectActivity(milestone.project_id, action, `"${milestone.title}" status: ${req.body.status}`, req.params.id);
+      
+      // If completed, set completed_date
+      if (req.body.status === 'completed' && !req.body.completed_date) {
+        db.updateMilestone(req.params.id, { completed_date: new Date().toISOString().split('T')[0] });
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/tracker/milestones/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.deleteMilestone(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tracker/projects/:projectId/milestones/reorder', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.reorderMilestones(req.params.projectId, req.body.orderedIds);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Assignees
+app.post('/api/tracker/milestones/:milestoneId/assignees', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const id = db.addMilestoneAssignee({ ...req.body, milestone_id: req.params.milestoneId });
+    res.json({ id, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/tracker/assignees/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.removeMilestoneAssignee(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Dashboard Stats
+app.get('/api/tracker/stats', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    res.json(db.getProjectTrackerStats());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/tracker/upcoming', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const days = parseInt(req.query.days) || 14;
+    res.json(db.getUpcomingDeadlines(days));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Email Reminder (placeholder - needs Resend setup)
+app.post('/api/tracker/milestones/:milestoneId/remind', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const milestone = db.getMilestone(req.params.milestoneId);
+    if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
+    
+    const project = db.getTrackedProject(milestone.project_id);
+    const assignees = milestone.assignees || [];
+    const emails = assignees.filter(a => a.email).map(a => a.email);
+    
+    if (emails.length === 0) {
+      return res.status(400).json({ error: 'No assignees with email addresses' });
+    }
+
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      // Create reminder record but mark as pending (manual send needed)
+      const reminderId = db.createReminder({
+        milestone_id: req.params.milestoneId,
+        recipient_emails: emails,
+        subject: `🔔 Reminder: ${milestone.title} - ${project.title}`,
+        message: req.body.message || `This is a reminder for milestone "${milestone.title}" in project "${project.title}".`,
+        status: 'pending'
+      });
+      
+      return res.json({
+        success: true,
+        reminder_id: reminderId,
+        emails,
+        note: 'RESEND_API_KEY not configured. Reminder saved but email not sent. Configure Resend to enable automatic emails.'
+      });
+    }
+
+    // Send email via Resend
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    const emailContent = `
+Hi,
+
+This is a reminder for the following milestone:
+
+📋 Project: ${project.title}
+📍 Milestone: ${milestone.title}
+📅 Due Date: ${milestone.due_date || 'Not set'}
+📝 Status: ${milestone.status}
+
+${milestone.description ? `Description: ${milestone.description}` : ''}
+
+${req.body.message ? `\nMessage from project lead:\n"${req.body.message}"` : ''}
+
+--
+Research Project Tracker
+    `.trim();
+
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'Research Tracker <notifications@resend.dev>',
+      to: emails,
+      subject: `🔔 Reminder: ${milestone.title} - ${project.title}`,
+      text: emailContent
+    });
+
+    if (error) {
+      const reminderId = db.createReminder({
+        milestone_id: req.params.milestoneId,
+        recipient_emails: emails,
+        subject: `🔔 Reminder: ${milestone.title}`,
+        message: emailContent,
+        status: 'failed'
+      });
+      db.updateReminderStatus(reminderId, 'failed', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    const reminderId = db.createReminder({
+      milestone_id: req.params.milestoneId,
+      recipient_emails: emails,
+      subject: `🔔 Reminder: ${milestone.title}`,
+      message: emailContent,
+      status: 'sent'
+    });
+    db.updateReminderStatus(reminderId, 'sent');
+    db.logProjectActivity(milestone.project_id, 'reminder_sent', `Reminder sent to ${emails.join(', ')}`, req.params.milestoneId);
+
+    res.json({ success: true, reminder_id: reminderId, emails, email_id: data?.id });
+  } catch (e) {
+    console.error('Reminder error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Start server - bind to 0.0.0.0 for Railway/cloud deployment
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🔬 Research Agents Dashboard`);

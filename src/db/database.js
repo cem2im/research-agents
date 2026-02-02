@@ -649,6 +649,310 @@ class ResearchDatabase {
       this.db.close();
     }
   }
+
+  // ============================================
+  // RESEARCH PROJECT TRACKER
+  // ============================================
+
+  // Project Groups
+  createProjectGroup(group) {
+    const id = group.id || uuidv4();
+    this.run(`
+      INSERT INTO project_groups (id, name, color, icon, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `, [id, group.name, group.color || '#3b82f6', group.icon || '📁', group.sort_order || 0]);
+    return id;
+  }
+
+  getProjectGroups() {
+    return this.all('SELECT * FROM project_groups ORDER BY sort_order, name');
+  }
+
+  updateProjectGroup(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
+    if (updates.color !== undefined) { fields.push('color = ?'); values.push(updates.color); }
+    if (updates.icon !== undefined) { fields.push('icon = ?'); values.push(updates.icon); }
+    if (updates.sort_order !== undefined) { fields.push('sort_order = ?'); values.push(updates.sort_order); }
+    if (fields.length === 0) return;
+    values.push(id);
+    this.run(`UPDATE project_groups SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
+
+  deleteProjectGroup(id) {
+    this.run('DELETE FROM project_groups WHERE id = ?', [id]);
+  }
+
+  // Tracked Projects
+  createTrackedProject(project) {
+    const id = project.id || uuidv4();
+    this.run(`
+      INSERT INTO tracked_projects (id, group_id, title, description, project_type, status, priority, start_date, target_date, tags, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      this.nullify(project.group_id),
+      project.title,
+      this.nullify(project.description),
+      project.project_type || 'other',
+      project.status || 'active',
+      project.priority || 'medium',
+      this.nullify(project.start_date),
+      this.nullify(project.target_date),
+      JSON.stringify(project.tags || []),
+      this.nullify(project.notes)
+    ]);
+    return id;
+  }
+
+  getTrackedProjects(filters = {}) {
+    let sql = `
+      SELECT tp.*, pg.name as group_name, pg.color as group_color, pg.icon as group_icon,
+        (SELECT COUNT(*) FROM tracked_milestones WHERE project_id = tp.id) as total_milestones,
+        (SELECT COUNT(*) FROM tracked_milestones WHERE project_id = tp.id AND status = 'completed') as completed_milestones
+      FROM tracked_projects tp
+      LEFT JOIN project_groups pg ON tp.group_id = pg.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (filters.group_id) {
+      sql += ' AND tp.group_id = ?';
+      params.push(filters.group_id);
+    }
+    if (filters.status) {
+      sql += ' AND tp.status = ?';
+      params.push(filters.status);
+    }
+    if (filters.status_not) {
+      sql += ' AND tp.status != ?';
+      params.push(filters.status_not);
+    }
+
+    sql += ' ORDER BY pg.sort_order, tp.priority DESC, tp.created_at DESC';
+
+    return this.all(sql, params).map(p => ({
+      ...p,
+      tags: JSON.parse(p.tags || '[]')
+    }));
+  }
+
+  getTrackedProject(id) {
+    const project = this.get(`
+      SELECT tp.*, pg.name as group_name, pg.color as group_color, pg.icon as group_icon
+      FROM tracked_projects tp
+      LEFT JOIN project_groups pg ON tp.group_id = pg.id
+      WHERE tp.id = ?
+    `, [id]);
+    if (!project) return null;
+    return {
+      ...project,
+      tags: JSON.parse(project.tags || '[]')
+    };
+  }
+
+  updateTrackedProject(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.group_id !== undefined) { fields.push('group_id = ?'); values.push(updates.group_id); }
+    if (updates.title !== undefined) { fields.push('title = ?'); values.push(updates.title); }
+    if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
+    if (updates.project_type !== undefined) { fields.push('project_type = ?'); values.push(updates.project_type); }
+    if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+    if (updates.priority !== undefined) { fields.push('priority = ?'); values.push(updates.priority); }
+    if (updates.current_milestone_id !== undefined) { fields.push('current_milestone_id = ?'); values.push(updates.current_milestone_id); }
+    if (updates.start_date !== undefined) { fields.push('start_date = ?'); values.push(updates.start_date); }
+    if (updates.target_date !== undefined) { fields.push('target_date = ?'); values.push(updates.target_date); }
+    if (updates.completed_date !== undefined) { fields.push('completed_date = ?'); values.push(updates.completed_date); }
+    if (updates.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(updates.tags)); }
+    if (updates.notes !== undefined) { fields.push('notes = ?'); values.push(updates.notes); }
+    
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+    
+    this.run(`UPDATE tracked_projects SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
+
+  deleteTrackedProject(id) {
+    this.run('DELETE FROM tracked_projects WHERE id = ?', [id]);
+  }
+
+  // Milestones
+  createMilestone(milestone) {
+    const id = milestone.id || uuidv4();
+    this.run(`
+      INSERT INTO tracked_milestones (id, project_id, sort_order, title, description, status, start_date, due_date, estimated_days, dependencies, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      milestone.project_id,
+      milestone.sort_order || 0,
+      milestone.title,
+      this.nullify(milestone.description),
+      milestone.status || 'pending',
+      this.nullify(milestone.start_date),
+      this.nullify(milestone.due_date),
+      this.nullify(milestone.estimated_days),
+      JSON.stringify(milestone.dependencies || []),
+      this.nullify(milestone.notes)
+    ]);
+    return id;
+  }
+
+  getMilestones(projectId) {
+    const milestones = this.all(`
+      SELECT * FROM tracked_milestones WHERE project_id = ? ORDER BY sort_order
+    `, [projectId]);
+
+    return milestones.map(m => ({
+      ...m,
+      dependencies: JSON.parse(m.dependencies || '[]'),
+      blockers: JSON.parse(m.blockers || '[]'),
+      assignees: this.getMilestoneAssignees(m.id)
+    }));
+  }
+
+  getMilestone(id) {
+    const milestone = this.get('SELECT * FROM tracked_milestones WHERE id = ?', [id]);
+    if (!milestone) return null;
+    return {
+      ...milestone,
+      dependencies: JSON.parse(milestone.dependencies || '[]'),
+      blockers: JSON.parse(milestone.blockers || '[]'),
+      assignees: this.getMilestoneAssignees(id)
+    };
+  }
+
+  updateMilestone(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.sort_order !== undefined) { fields.push('sort_order = ?'); values.push(updates.sort_order); }
+    if (updates.title !== undefined) { fields.push('title = ?'); values.push(updates.title); }
+    if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
+    if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+    if (updates.start_date !== undefined) { fields.push('start_date = ?'); values.push(updates.start_date); }
+    if (updates.due_date !== undefined) { fields.push('due_date = ?'); values.push(updates.due_date); }
+    if (updates.completed_date !== undefined) { fields.push('completed_date = ?'); values.push(updates.completed_date); }
+    if (updates.estimated_days !== undefined) { fields.push('estimated_days = ?'); values.push(updates.estimated_days); }
+    if (updates.actual_days !== undefined) { fields.push('actual_days = ?'); values.push(updates.actual_days); }
+    if (updates.dependencies !== undefined) { fields.push('dependencies = ?'); values.push(JSON.stringify(updates.dependencies)); }
+    if (updates.blockers !== undefined) { fields.push('blockers = ?'); values.push(JSON.stringify(updates.blockers)); }
+    if (updates.notes !== undefined) { fields.push('notes = ?'); values.push(updates.notes); }
+    
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+    
+    this.run(`UPDATE tracked_milestones SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
+
+  deleteMilestone(id) {
+    this.run('DELETE FROM tracked_milestones WHERE id = ?', [id]);
+  }
+
+  reorderMilestones(projectId, orderedIds) {
+    orderedIds.forEach((id, index) => {
+      this.run('UPDATE tracked_milestones SET sort_order = ? WHERE id = ? AND project_id = ?', [index, id, projectId]);
+    });
+  }
+
+  // Milestone Assignees
+  addMilestoneAssignee(assignee) {
+    const id = assignee.id || uuidv4();
+    this.run(`
+      INSERT INTO milestone_assignees (id, milestone_id, name, email, role)
+      VALUES (?, ?, ?, ?, ?)
+    `, [id, assignee.milestone_id, assignee.name, this.nullify(assignee.email), assignee.role || 'assignee']);
+    return id;
+  }
+
+  getMilestoneAssignees(milestoneId) {
+    return this.all('SELECT * FROM milestone_assignees WHERE milestone_id = ?', [milestoneId]);
+  }
+
+  removeMilestoneAssignee(id) {
+    this.run('DELETE FROM milestone_assignees WHERE id = ?', [id]);
+  }
+
+  // Reminders
+  createReminder(reminder) {
+    const id = reminder.id || uuidv4();
+    this.run(`
+      INSERT INTO project_reminders (id, milestone_id, recipient_emails, subject, message, scheduled_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      reminder.milestone_id,
+      JSON.stringify(reminder.recipient_emails || []),
+      reminder.subject,
+      reminder.message,
+      this.nullify(reminder.scheduled_at),
+      reminder.status || 'pending'
+    ]);
+    return id;
+  }
+
+  updateReminderStatus(id, status, error = null) {
+    this.run(`
+      UPDATE project_reminders SET status = ?, sent_at = ?, error = ? WHERE id = ?
+    `, [status, status === 'sent' ? new Date().toISOString() : null, error, id]);
+  }
+
+  // Project Activity
+  logProjectActivity(projectId, action, details, milestoneId = null) {
+    this.run(`
+      INSERT INTO project_activity (project_id, milestone_id, action, details)
+      VALUES (?, ?, ?, ?)
+    `, [projectId, milestoneId, action, details]);
+  }
+
+  getProjectActivity(projectId, limit = 50) {
+    return this.all(`
+      SELECT pa.*, tm.title as milestone_title
+      FROM project_activity pa
+      LEFT JOIN tracked_milestones tm ON pa.milestone_id = tm.id
+      WHERE pa.project_id = ?
+      ORDER BY pa.created_at DESC
+      LIMIT ?
+    `, [projectId, limit]);
+  }
+
+  // Dashboard stats
+  getProjectTrackerStats() {
+    return {
+      total_projects: this.get('SELECT COUNT(*) as count FROM tracked_projects')?.count || 0,
+      active_projects: this.get("SELECT COUNT(*) as count FROM tracked_projects WHERE status = 'active'")?.count || 0,
+      completed_projects: this.get("SELECT COUNT(*) as count FROM tracked_projects WHERE status = 'completed'")?.count || 0,
+      overdue_milestones: this.get(`
+        SELECT COUNT(*) as count FROM tracked_milestones 
+        WHERE status IN ('pending', 'in_progress') AND due_date < date('now')
+      `)?.count || 0,
+      upcoming_milestones: this.get(`
+        SELECT COUNT(*) as count FROM tracked_milestones 
+        WHERE status IN ('pending', 'in_progress') 
+        AND due_date >= date('now') AND due_date <= date('now', '+7 days')
+      `)?.count || 0
+    };
+  }
+
+  getUpcomingDeadlines(days = 14) {
+    return this.all(`
+      SELECT tm.*, tp.title as project_title, tp.priority as project_priority,
+        pg.name as group_name, pg.color as group_color
+      FROM tracked_milestones tm
+      JOIN tracked_projects tp ON tm.project_id = tp.id
+      LEFT JOIN project_groups pg ON tp.group_id = pg.id
+      WHERE tm.status IN ('pending', 'in_progress')
+        AND tm.due_date IS NOT NULL
+        AND tm.due_date <= date('now', '+' || ? || ' days')
+      ORDER BY tm.due_date ASC
+    `, [days]).map(m => ({
+      ...m,
+      assignees: this.getMilestoneAssignees(m.id)
+    }));
+  }
 }
 
 // Singleton instance
