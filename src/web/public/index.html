@@ -2016,6 +2016,17 @@
             ${milestones.map((m, i) => renderMilestoneItem(m, i)).join('')}
           </div>
           
+          <div style="margin-top:20px;padding-top:15px;border-top:1px solid #334155;">
+            <h4 style="margin-bottom:10px;">📅 Scheduled Reminders</h4>
+            <div id="project-scheduled-reminders"></div>
+            <button onclick="showAddReminderModal('${project.id}')" style="margin-top:10px;background:#334155;">+ Add Weekly Reminder</button>
+          </div>
+
+          <div style="margin-top:20px;padding-top:15px;border-top:1px solid #334155;">
+            <h4 style="margin-bottom:10px;">💬 Incoming Messages</h4>
+            <div id="project-messages"></div>
+          </div>
+
           <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
             <button onclick="addMilestoneToProject('${projectId}')" style="background:#334155;">+ Add Milestone</button>
             <select onchange="updateProjectStatus('${projectId}', this.value)" style="padding:10px;">
@@ -2028,6 +2039,10 @@
             <button onclick="deleteProject('${projectId}')" style="background:#ef4444;">🗑 Delete Project</button>
           </div>
         `;
+        
+        // Load scheduled reminders and messages
+        loadProjectReminders(project.id);
+        loadProjectMessages(project.id);
         
         document.getElementById('project-detail-modal').style.display = 'flex';
       } catch (e) {
@@ -2215,6 +2230,108 @@
         trackerGroups = await authFetch('/api/tracker/groups').then(r => r.json());
         renderGroupList();
       } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // ========== SCHEDULED REMINDERS ==========
+    
+    async function loadProjectReminders(projectId) {
+      try {
+        const reminders = await authFetch(`/api/tracker/projects/${projectId}/reminders`).then(r => r.json());
+        const container = document.getElementById('project-scheduled-reminders');
+        
+        if (reminders.length === 0) {
+          container.innerHTML = '<p style="color:#64748b;font-size:13px;">No scheduled reminders</p>';
+          return;
+        }
+
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        container.innerHTML = reminders.map(r => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#0f172a;border-radius:6px;margin-bottom:6px;">
+            <span>
+              ${r.schedule_type === 'weekly' ? `📅 Every ${days[r.schedule_day]} at ${r.schedule_time}` : 
+                r.schedule_type === 'daily' ? `📅 Daily at ${r.schedule_time}` :
+                `⏰ ${r.days_before_due} days before due`}
+            </span>
+            <button onclick="deleteReminder('${r.id}')" style="padding:4px 8px;background:#ef4444;font-size:11px;">×</button>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Error loading reminders:', e);
+      }
+    }
+
+    async function showAddReminderModal(projectId) {
+      const scheduleType = prompt('Reminder type:\n1 = Weekly\n2 = Daily\n3 = Days before due\n\nEnter number:');
+      
+      if (!scheduleType) return;
+      
+      let reminder = { project_id: projectId };
+      
+      if (scheduleType === '1') {
+        const day = prompt('Which day? (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)');
+        const time = prompt('What time? (e.g., 09:00)') || '09:00';
+        reminder.schedule_type = 'weekly';
+        reminder.schedule_day = parseInt(day);
+        reminder.schedule_time = time;
+      } else if (scheduleType === '2') {
+        const time = prompt('What time? (e.g., 09:00)') || '09:00';
+        reminder.schedule_type = 'daily';
+        reminder.schedule_time = time;
+      } else if (scheduleType === '3') {
+        const days = prompt('How many days before due date?');
+        reminder.schedule_type = 'before_due';
+        reminder.days_before_due = parseInt(days);
+      } else {
+        return;
+      }
+
+      try {
+        await authFetch(`/api/tracker/projects/${projectId}/reminders`, {
+          method: 'POST',
+          body: reminder
+        });
+        loadProjectReminders(projectId);
+        alert('Reminder scheduled!');
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function deleteReminder(reminderId) {
+      if (!confirm('Delete this scheduled reminder?')) return;
+      try {
+        await authFetch(`/api/tracker/reminders/${reminderId}`, { method: 'DELETE' });
+        showProjectDetail(currentProjectDetail.id);
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    // ========== WHATSAPP MESSAGES ==========
+    
+    async function loadProjectMessages(projectId) {
+      try {
+        const messages = await authFetch(`/api/tracker/whatsapp/messages?project_id=${projectId}`).then(r => r.json());
+        const container = document.getElementById('project-messages');
+        
+        if (messages.length === 0) {
+          container.innerHTML = '<p style="color:#64748b;font-size:13px;">No messages yet. When assignees reply via WhatsApp, their messages will appear here.</p>';
+          return;
+        }
+
+        container.innerHTML = messages.map(m => `
+          <div style="padding:10px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #25D366;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+              <strong style="color:#25D366;">📱 ${m.from_name || m.from_phone}</strong>
+              <span style="font-size:11px;color:#64748b;">${new Date(m.created_at).toLocaleString()}</span>
+            </div>
+            <p style="font-size:13px;">${m.message}</p>
+            ${m.milestone_title ? `<span style="font-size:11px;color:#94a3b8;">→ ${m.milestone_title}</span>` : ''}
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Error loading messages:', e);
+      }
     }
 
     // Load tracker when tab is clicked

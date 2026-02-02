@@ -268,6 +268,36 @@ CREATE TABLE IF NOT EXISTS project_reminders (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Scheduled Reminders (for automatic weekly/daily reminders)
+CREATE TABLE IF NOT EXISTS scheduled_reminders (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES tracked_projects(id) ON DELETE CASCADE,
+    milestone_id TEXT REFERENCES tracked_milestones(id) ON DELETE CASCADE,
+    schedule_type TEXT NOT NULL,  -- 'weekly', 'daily', 'before_due'
+    schedule_day INTEGER,         -- 0=Sunday, 1=Monday, etc. (for weekly)
+    schedule_time TEXT DEFAULT '09:00',  -- HH:MM
+    days_before_due INTEGER,      -- For 'before_due' type
+    last_sent_at TEXT,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Incoming WhatsApp Messages
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id TEXT PRIMARY KEY,
+    from_phone TEXT NOT NULL,
+    from_name TEXT,
+    message TEXT NOT NULL,
+    project_id TEXT REFERENCES tracked_projects(id),
+    milestone_id TEXT REFERENCES tracked_milestones(id),
+    wa_message_id TEXT,           -- WhatsApp message ID
+    status TEXT DEFAULT 'received',  -- 'received', 'processed', 'replied'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_phone ON whatsapp_messages(from_phone);
+CREATE INDEX IF NOT EXISTS idx_scheduled_reminders_active ON scheduled_reminders(active);
+
 -- Project Activity Log
 CREATE TABLE IF NOT EXISTS project_activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

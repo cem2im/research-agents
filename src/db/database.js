@@ -994,6 +994,125 @@ class ResearchDatabase {
     this.run('UPDATE milestone_assignees SET notified_at = ? WHERE id = ?', 
       [new Date().toISOString(), assigneeId]);
   }
+
+  // ========== SCHEDULED REMINDERS ==========
+  
+  createScheduledReminder(reminder) {
+    const id = reminder.id || uuidv4();
+    this.run(`
+      INSERT INTO scheduled_reminders (id, project_id, milestone_id, schedule_type, schedule_day, schedule_time, days_before_due, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      this.nullify(reminder.project_id),
+      this.nullify(reminder.milestone_id),
+      reminder.schedule_type,
+      this.nullify(reminder.schedule_day),
+      reminder.schedule_time || '09:00',
+      this.nullify(reminder.days_before_due),
+      reminder.active !== false ? 1 : 0
+    ]);
+    return id;
+  }
+
+  getScheduledReminders(projectId = null) {
+    const sql = projectId 
+      ? 'SELECT * FROM scheduled_reminders WHERE project_id = ? AND active = 1'
+      : 'SELECT * FROM scheduled_reminders WHERE active = 1';
+    return this.all(sql, projectId ? [projectId] : []);
+  }
+
+  getDueScheduledReminders() {
+    const now = new Date();
+    const today = now.getDay(); // 0 = Sunday
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+    const todayDate = now.toISOString().split('T')[0];
+
+    return this.all(`
+      SELECT sr.*, tp.title as project_title, tm.title as milestone_title, tm.due_date
+      FROM scheduled_reminders sr
+      LEFT JOIN tracked_projects tp ON sr.project_id = tp.id
+      LEFT JOIN tracked_milestones tm ON sr.milestone_id = tm.id
+      WHERE sr.active = 1
+        AND (
+          (sr.schedule_type = 'weekly' AND sr.schedule_day = ? AND sr.schedule_time <= ?)
+          OR (sr.schedule_type = 'daily' AND sr.schedule_time <= ?)
+          OR (sr.schedule_type = 'before_due' AND tm.due_date IS NOT NULL 
+              AND date(tm.due_date, '-' || sr.days_before_due || ' days') = ?)
+        )
+        AND (sr.last_sent_at IS NULL OR date(sr.last_sent_at) < ?)
+    `, [today, currentTime, currentTime, todayDate, todayDate]);
+  }
+
+  updateScheduledReminderSent(id) {
+    this.run('UPDATE scheduled_reminders SET last_sent_at = ? WHERE id = ?', 
+      [new Date().toISOString(), id]);
+  }
+
+  deleteScheduledReminder(id) {
+    this.run('DELETE FROM scheduled_reminders WHERE id = ?', [id]);
+  }
+
+  // ========== WHATSAPP INCOMING MESSAGES ==========
+  
+  saveIncomingWhatsApp(message) {
+    const id = message.id || uuidv4();
+    
+    // Try to match phone to an assignee to find project/milestone
+    const assignee = this.get(`
+      SELECT ma.*, tm.project_id, tm.id as milestone_id 
+      FROM milestone_assignees ma
+      JOIN tracked_milestones tm ON ma.milestone_id = tm.id
+      WHERE ma.phone LIKE ?
+      ORDER BY ma.created_at DESC
+      LIMIT 1
+    `, [`%${message.from_phone.slice(-10)}%`]);
+
+    this.run(`
+      INSERT INTO whatsapp_messages (id, from_phone, from_name, message, project_id, milestone_id, wa_message_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      message.from_phone,
+      this.nullify(message.from_name),
+      message.message,
+      assignee?.project_id || null,
+      assignee?.milestone_id || null,
+      this.nullify(message.wa_message_id)
+    ]);
+
+    // Log activity if we found a matching project
+    if (assignee?.project_id) {
+      this.logProjectActivity(
+        assignee.project_id,
+        'whatsapp_received',
+        `Message from ${message.from_name || message.from_phone}: "${message.message.substring(0, 100)}"`,
+        assignee.milestone_id
+      );
+    }
+
+    return { id, matched_project: assignee?.project_id, matched_milestone: assignee?.milestone_id };
+  }
+
+  getProjectWhatsAppMessages(projectId, limit = 20) {
+    return this.all(`
+      SELECT * FROM whatsapp_messages 
+      WHERE project_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [projectId, limit]);
+  }
+
+  getRecentWhatsAppMessages(limit = 50) {
+    return this.all(`
+      SELECT wm.*, tp.title as project_title, tm.title as milestone_title
+      FROM whatsapp_messages wm
+      LEFT JOIN tracked_projects tp ON wm.project_id = tp.id
+      LEFT JOIN tracked_milestones tm ON wm.milestone_id = tm.id
+      ORDER BY wm.created_at DESC
+      LIMIT ?
+    `, [limit]);
+  }
 }
 
 // Singleton instance

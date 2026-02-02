@@ -1089,6 +1089,169 @@ Research Project Tracker
   }
 });
 
+// ============================================
+// SCHEDULED REMINDERS
+// ============================================
+
+// Get scheduled reminders for a project
+app.get('/api/tracker/projects/:projectId/reminders', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    res.json(db.getScheduledReminders(req.params.projectId));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a scheduled reminder
+app.post('/api/tracker/projects/:projectId/reminders', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const id = db.createScheduledReminder({
+      ...req.body,
+      project_id: req.params.projectId
+    });
+    res.json({ id, success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a scheduled reminder
+app.delete('/api/tracker/reminders/:id', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    db.deleteScheduledReminder(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Check and send due reminders (call this from cron or periodically)
+app.post('/api/tracker/reminders/process', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const dueReminders = db.getDueScheduledReminders();
+    
+    const results = [];
+    
+    for (const reminder of dueReminders) {
+      // Get assignees with phones for this project/milestone
+      let assignees = [];
+      if (reminder.milestone_id) {
+        assignees = db.getMilestoneAssignees(reminder.milestone_id).filter(a => a.phone);
+      } else if (reminder.project_id) {
+        // Get all assignees from all milestones in the project
+        const milestones = db.getMilestones(reminder.project_id);
+        for (const m of milestones) {
+          assignees.push(...(m.assignees || []).filter(a => a.phone));
+        }
+      }
+
+      if (assignees.length === 0) continue;
+
+      // Build message
+      const message = `📅 *Scheduled Reminder*\n\n` +
+        `📋 Project: ${reminder.project_title || 'Unknown'}\n` +
+        (reminder.milestone_title ? `📍 Milestone: ${reminder.milestone_title}\n` : '') +
+        (reminder.due_date ? `⏰ Due: ${reminder.due_date}\n` : '') +
+        `\n--\nResearch Project Tracker`;
+
+      // Send to all assignees
+      for (const assignee of assignees) {
+        try {
+          await sendWhatsAppMessage(assignee.phone, message);
+          results.push({ reminder_id: reminder.id, assignee: assignee.name, status: 'sent' });
+        } catch (e) {
+          results.push({ reminder_id: reminder.id, assignee: assignee.name, status: 'failed', error: e.message });
+        }
+      }
+
+      // Mark reminder as sent
+      db.updateScheduledReminderSent(reminder.id);
+    }
+
+    res.json({ processed: dueReminders.length, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================
+// WHATSAPP WEBHOOK (for incoming messages)
+// ============================================
+
+// Webhook verification (GET request from Meta)
+app.get('/api/whatsapp/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  // Verify token should be set in environment
+  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'research_tracker_webhook';
+
+  if (mode === 'subscribe' && token === verifyToken) {
+    console.log('WhatsApp webhook verified');
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+// Incoming messages (POST from Meta)
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  try {
+    const body = req.body;
+
+    if (body.object === 'whatsapp_business_account') {
+      const db = await getDatabase();
+
+      for (const entry of body.entry || []) {
+        for (const change of entry.changes || []) {
+          if (change.field === 'messages') {
+            const messages = change.value?.messages || [];
+            
+            for (const msg of messages) {
+              if (msg.type === 'text') {
+                const result = db.saveIncomingWhatsApp({
+                  from_phone: msg.from,
+                  from_name: change.value?.contacts?.[0]?.profile?.name,
+                  message: msg.text?.body || '',
+                  wa_message_id: msg.id
+                });
+
+                console.log(`WhatsApp received from ${msg.from}: "${msg.text?.body?.substring(0, 50)}..." → Project: ${result.matched_project || 'none'}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (e) {
+    console.error('Webhook error:', e);
+    res.sendStatus(500);
+  }
+});
+
+// Get incoming WhatsApp messages
+app.get('/api/tracker/whatsapp/messages', async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const projectId = req.query.project_id;
+    
+    if (projectId) {
+      res.json(db.getProjectWhatsAppMessages(projectId));
+    } else {
+      res.json(db.getRecentWhatsAppMessages());
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Start server - bind to 0.0.0.0 for Railway/cloud deployment
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🔬 Research Agents Dashboard`);
