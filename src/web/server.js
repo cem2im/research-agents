@@ -899,7 +899,42 @@ app.post('/api/tracker/assignees/:assigneeId/notified', async (req, res) => {
   }
 });
 
-// WhatsApp Reminder (stores for Clawdbot to send)
+// WhatsApp Business API - Send message
+async function sendWhatsAppMessage(phone, message) {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  
+  if (!token || !phoneId) {
+    throw new Error('WhatsApp Business API not configured');
+  }
+
+  // Clean phone number (remove spaces, dashes, ensure no leading +)
+  const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^\+/, '');
+
+  const response = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: { body: message }
+    })
+  });
+
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(data.error.message || 'WhatsApp API error');
+  }
+  
+  return data;
+}
+
+// WhatsApp Reminder - Direct send via Business API
 app.post('/api/tracker/milestones/:milestoneId/remind-whatsapp', async (req, res) => {
   try {
     const db = await getDatabase();
@@ -908,30 +943,56 @@ app.post('/api/tracker/milestones/:milestoneId/remind-whatsapp', async (req, res
     
     const project = db.getTrackedProject(milestone.project_id);
     const assignees = milestone.assignees || [];
-    const phones = assignees.filter(a => a.phone).map(a => ({ name: a.name, phone: a.phone }));
+    const phones = assignees.filter(a => a.phone).map(a => ({ name: a.name, phone: a.phone, id: a.id }));
     
     if (phones.length === 0) {
       return res.status(400).json({ error: 'No assignees with phone numbers' });
     }
 
-    // Create reminder record for Clawdbot to pick up
-    const reminderId = db.createReminder({
-      milestone_id: req.params.milestoneId,
-      recipient_emails: phones.map(p => p.phone), // reusing field for phones
-      subject: `🔔 Reminder: ${milestone.title}`,
-      message: req.body.message || `Reminder for "${milestone.title}" in project "${project.title}". Due: ${milestone.due_date || 'Not set'}`,
-      status: 'pending'
-    });
+    // Build message
+    const customMessage = req.body.message ? `\n\n💬 "${req.body.message}"` : '';
+    const message = `🔔 *Reminder: ${milestone.title}*
 
-    db.logProjectActivity(milestone.project_id, 'reminder_queued', `WhatsApp reminder queued for ${phones.map(p => p.name).join(', ')}`, req.params.milestoneId);
+📋 Project: ${project.title}
+📅 Due: ${milestone.due_date || 'Not set'}
+📍 Status: ${milestone.status}
+${milestone.description ? `\n📝 ${milestone.description}` : ''}${customMessage}
+
+--
+Research Project Tracker`;
+
+    const results = [];
+    const errors = [];
+
+    // Send to each assignee
+    for (const assignee of phones) {
+      try {
+        await sendWhatsAppMessage(assignee.phone, message);
+        results.push({ name: assignee.name, phone: assignee.phone, status: 'sent' });
+        // Mark as notified
+        db.markAssigneeNotified(assignee.id);
+      } catch (e) {
+        errors.push({ name: assignee.name, phone: assignee.phone, error: e.message });
+      }
+    }
+
+    // Log activity
+    if (results.length > 0) {
+      db.logProjectActivity(
+        milestone.project_id, 
+        'whatsapp_sent', 
+        `WhatsApp sent to: ${results.map(r => r.name).join(', ')}`,
+        req.params.milestoneId
+      );
+    }
 
     res.json({
-      success: true,
-      reminder_id: reminderId,
-      phones,
-      message: 'Reminder queued for WhatsApp delivery'
+      success: results.length > 0,
+      sent: results,
+      errors: errors.length > 0 ? errors : undefined
     });
   } catch (e) {
+    console.error('WhatsApp reminder error:', e);
     res.status(500).json({ error: e.message });
   }
 });

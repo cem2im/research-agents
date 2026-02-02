@@ -2140,7 +2140,15 @@
         });
         const data = await res.json();
         if (data.success) {
-          alert('✅ WhatsApp reminder queued!\n\nWill be sent to: ' + data.phones.map(p => p.name).join(', ') + '\n\n(Clawdbot will deliver it shortly)');
+          let msg = '✅ WhatsApp sent!\n\n';
+          if (data.sent && data.sent.length > 0) {
+            msg += 'Delivered to: ' + data.sent.map(s => s.name).join(', ');
+          }
+          if (data.errors && data.errors.length > 0) {
+            msg += '\n\n⚠️ Failed: ' + data.errors.map(e => `${e.name}: ${e.error}`).join(', ');
+          }
+          alert(msg);
+          showProjectDetail(currentProjectDetail.id); // Refresh to show notified status
         } else {
           alert('Error: ' + (data.error || 'Unknown error'));
         }
